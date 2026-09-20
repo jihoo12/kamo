@@ -1,0 +1,25 @@
+; Contractible fibers, following ABCFHL section 2.7. This file has no axioms.
+(def Fiber (Pi A (U 0) (Pi B (U 0) (Pi f (Pi x A B) (Pi b B (U 0)))))
+  (lam A (lam B (lam f (lam b
+    (Sigma a A (Path i B (app f a) b)))))))
+(def Contr (Pi A (U 0) (U 0))
+  (lam A (Sigma center A (Pi point A (Path i A center point)))))
+(def Equiv (Pi A (U 0) (Pi B (U 0) (U 0)))
+  (lam A (lam B
+    (Sigma f (Pi x A B)
+      (Pi b B (app Contr (app (app (app (app Fiber A) B) f) b)))))))
+(def id-equiv (Pi A (U 0) (app (app Equiv A) A))
+  (lam A (pair (lam x x)
+    (lam b (pair (pair b (path j b))
+      (lam h (path i
+        (pair
+          (com k A 1 0 b (((= i 0) b) ((= i 1) (at (snd h) k))))
+          (path j (com k A 1 j b (((= i 0) b) ((= i 1) (at (snd h) k))))))))))))
+)
+(def ua (Pi A (U 0) (Pi B (U 0)
+  (Pi e (app (app Equiv A) B) (Path i (U 0) A B))))
+  (lam A (lam B (lam e (path i
+    (Glue B (((= i 0) A e) ((= i 1) B (app id-equiv B)))))))))
+(def bool-id-path (Path i (U 0) Bool Bool)
+  (app (app (app ua Bool) Bool) (app id-equiv Bool)))
+(def identity-transport Bool (coe i (at bool-id-path i) 0 1 true))

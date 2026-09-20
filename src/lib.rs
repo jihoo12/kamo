@@ -1,0 +1,76 @@
+#![forbid(unsafe_code)]
+//! Experimental, incomplete Cartesian cubical kernel. No univalence postulate.
+//! See README.md and docs/rules.md for the implemented fragment and missing rules.
+mod arena;
+mod syntax;
+mod face;
+mod eval;
+mod check;
+mod quote;
+mod glue;
+
+use std::fmt;
+use std::time::{Duration,Instant};
+pub type Result<T> = std::result::Result<T,Error>;
+
+#[derive(Clone,Debug)]
+pub struct Error { pub offset:Option<usize>, pub message:String }
+impl Error {
+    fn at(offset:usize,message:impl Into<String>)->Self {Self{offset:Some(offset),message:message.into()}}
+    fn plain(message:impl Into<String>)->Self {Self{offset:None,message:message.into()}}
+    /// Byte offsets are rendered as one-based Unicode character columns.
+    pub fn render(&self,file:&str,source:&str)->String {
+        if let Some(offset)=self.offset {let prefix=&source[..offset.min(source.len())];let line=prefix.bytes().filter(|b|*b==b'\n').count()+1;let column=prefix.rsplit('\n').next().unwrap_or("").chars().count()+1;format!("{file}:{line}:{column}: {}",self.message)}else{format!("{file}: {}",self.message)}
+    }
+}
+impl fmt::Display for Error {fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {write!(f,"{}",self.message)}}
+impl std::error::Error for Error {}
+
+#[derive(Clone,Copy,Debug)]
+pub struct Options { pub fuel:u64, pub optimized:bool, pub max_nodes:usize }
+impl Default for Options {fn default()->Self {Self{fuel:1_000_000,optimized:true,max_nodes:250_000}}}
+
+#[derive(Clone,Debug,Default)]
+pub struct Statistics {
+    pub steps:u64,
+    pub value_nodes:usize,
+    pub environment_nodes:usize,
+    pub substitution_nodes:usize,
+    pub face_nodes:usize,
+    /// Peak retained arena capacities, including Vec payloads. Excludes hash maps,
+    /// allocator metadata, syntax, stack, and temporary face-solver allocations.
+    pub arena_bytes:usize,
+    pub cache_entries:usize,
+}
+#[derive(Debug)]
+pub struct NormalForm { pub text:String, pub statistics:Statistics }
+
+/// Immutable checked syntax. Semantic IDs never cross this API boundary.
+#[derive(Debug)]
+pub struct CheckedProgram { program:syntax::Program }
+impl CheckedProgram {
+    pub fn check(source:&str)->Result<Self> {Self::check_with(source,Options::default())}
+    pub fn check_with(source:&str,options:Options)->Result<Self> {
+        let program=syntax::parse(source)?;
+        for index in 0..program.decls.len() {
+            let mut engine=eval::Engine::new(&program,options.optimized,options.fuel,options.max_nodes);engine.check_declaration(index)?;
+        }
+        Ok(Self{program})
+    }
+    pub fn names(&self)->impl Iterator<Item=&str> {self.program.decls.iter().map(|d|d.name.as_str())}
+    pub fn normalize(&self,name:&str)->Result<NormalForm> {self.normalize_with(name,Options::default())}
+    pub fn normalize_with(&self,name:&str,options:Options)->Result<NormalForm> {
+        let decl=self.program.decls.iter().find(|d|d.name==name).ok_or_else(||Error::plain(format!("unknown declaration '{name}'")))?;
+        let mut engine=eval::Engine::new(&self.program,options.optimized,options.fuel,options.max_nodes);let env=engine.env(eval::Env::default());let face=engine.faces.top();let ty=engine.thunk(decl.ty,env);let body=engine.thunk(decl.body,env);
+        let text=engine.quote(body,ty,face)?;Ok(NormalForm{text,statistics:engine.statistics()})
+    }
+    /// Measures semantic conversion of two checked definitions, without parsing,
+    /// checking, quotation, or output inside the timed section.
+    pub fn benchmark_conversion(&self,left:&str,right:&str,options:Options)->Result<(Duration,Statistics,bool)> {
+        let lookup=|name:&str|self.program.decls.iter().find(|d|d.name==name).ok_or_else(||Error::plain(format!("unknown declaration '{name}'")));
+        let left=lookup(left)?;let right=lookup(right)?;
+        let mut engine=eval::Engine::new(&self.program,options.optimized,options.fuel,options.max_nodes);let env=engine.env(eval::Env::default());let face=engine.faces.top();let lt=engine.thunk(left.ty,env);let rt=engine.thunk(right.ty,env);let l=engine.thunk(left.body,env);let r=engine.thunk(right.body,env);
+        if !engine.conv(lt,rt,None,face)? {return Err(Error::plain("benchmark definitions have different types"));}
+        let start=Instant::now();let equal=engine.conv(l,r,Some(lt),face)?;let elapsed=start.elapsed();Ok((elapsed,engine.statistics(),equal))
+    }
+}
