@@ -1,63 +1,611 @@
-; Contractible fibers, following ABCFHL section 2.7. This file has no axioms.
-(def Fiber (Pi A (U 0) (Pi B (U 0) (Pi f (Pi x A B) (Pi b B (U 0)))))
-  (lam A (lam B (lam f (lam b
-    (Sigma a A (Path i B (app f a) b)))))))
-(def Contr (Pi A (U 0) (U 0))
-  (lam A (Sigma center A (Pi point A (Path i A center point)))))
-(def Equiv (Pi A (U 0) (Pi B (U 0) (U 0)))
-  (lam A (lam B
-    (Sigma f (Pi x A B)
-      (Pi b B (app Contr (app (app (app (app Fiber A) B) f) b)))))))
-(def id-equiv (Pi A (U 0) (app (app Equiv A) A))
-  (lam A (pair (lam x x)
-    (lam b (pair (pair b (path j b))
-      (lam h (path i
+; Explicit library proofs; every definition is checked.
+(def Fiber
+  (Pi A (U 0) (Pi B (U 0) (Pi f (Pi x A B) (Pi b B (U 0)))))
+  (lam A (lam B (lam f (lam b (Sigma a A (Path i B (app f a) b)))))))
+
+(def Contr (Pi A (U 0) (U 0)) (lam A (Sigma center A (Pi point A (Path i A center point)))))
+
+(def Equiv
+  (Pi A (U 0) (Pi B (U 0) (U 0)))
+  (lam A (lam B (Sigma f (Pi x A B) (Pi b B (app Contr (app (app (app (app Fiber A) B) f) b)))))))
+
+(def id-equiv
+  (Pi A (U 0) (app (app Equiv A) A))
+  (lam A
+    (pair
+      (lam x x)
+      (lam b
         (pair
-          (com k A 1 0 b (((= i 0) b) ((= i 1) (at (snd h) k))))
-          (path j (com k A 1 j b (((= i 0) b) ((= i 1) (at (snd h) k))))))))))))
-)
-(def ua (Pi A (U 0) (Pi B (U 0)
-  (Pi e (app (app Equiv A) B) (Path i (U 0) A B))))
-  (lam A (lam B (lam e (path i
-    (Glue B (((= i 0) A e) ((= i 1) B (app id-equiv B)))))))))
-(def bool-id-path (Path i (U 0) Bool Bool)
-  (app (app (app ua Bool) Bool) (app id-equiv Bool)))
+          (pair b (path j b))
+          (lam h
+            (path i
+              (pair
+                (com k A 1 0 b (((= i 0) b) ((= i 1) (at (snd h) k))))
+                (path j (com k A 1 j b (((= i 0) b) ((= i 1) (at (snd h) k)))))))))))))
+
+(def ua
+  (Pi A (U 0) (Pi B (U 0) (Pi e (app (app Equiv A) B) (Path i (U 0) A B))))
+  (lam A (lam B (lam e (path i (Glue B (((= i 0) A e) ((= i 1) B (app id-equiv B)))))))))
+
+(def bool-id-path (Path i (U 0) Bool Bool) (app (app (app ua Bool) Bool) (app id-equiv Bool)))
+
 (def identity-transport Bool (coe i (at bool-id-path i) 0 1 true))
 
-; Negation equivalence, proved by filling the fibers of its involution.
 (def not (Pi b Bool Bool) (lam b (bool-elim (lam _ Bool) false true b)))
-(def not-not (Pi b Bool (Path i Bool (app not (app not b)) b)) (lam b (bool-elim (lam b (Path i Bool (app not (app not b)) b)) (path i true) (path i false) b)))
-(def neg-equiv (app (app Equiv Bool) Bool) (pair not (lam y (pair (pair (app not y) (app not-not y)) (lam h (path i (pair (com k Bool 1 0 (app not y) (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y))))) ((= i 1) (com l Bool 0 1 (app not (at (snd h) k)) (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y))))))) (path j (com k Bool 0 1 (app not (com k Bool 1 0 (com k Bool 1 j (app not y) (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y))))) ((= i 1) (com l Bool 0 1 (app not (at (snd h) k)) (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y))))))) (((= i 0) (com l Bool 0 k (app not (at (app not-not y) j)) (((= j 0) (at (app not-not (app not y)) l)) ((= j 1) (app not y))))) ((= i 1) (com l Bool 0 k (app not (at (snd h) j)) (((= j 0) (at (app not-not (fst h)) l)) ((= j 1) (app not y))))) ((= j 0) (at (app not-not (com k Bool 1 0 (app not y) (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y))))) ((= i 1) (com l Bool 0 1 (app not (at (snd h) k)) (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y)))))))) k)) ((= j 1) (app not y))))) (((= i 0) (at (app not-not (at (app not-not y) j)) k)) ((= i 1) (at (app not-not (at (snd h) j)) k)) ((= j 0) (at (app not-not (app not (com k Bool 1 0 (app not y) (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y))))) ((= i 1) (com l Bool 0 1 (app not (at (snd h) k)) (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y))))))))) k)) ((= j 1) (at (app not-not y) k))))))))))))
+
+(def not-not
+  (Pi b Bool (Path i Bool (app not (app not b)) b))
+  (lam b (bool-elim (lam b (Path i Bool (app not (app not b)) b)) (path i true) (path i false) b)))
+
+(def neg-equiv
+  (app (app Equiv Bool) Bool)
+  (pair
+    not
+    (lam y
+      (pair
+        (pair (app not y) (app not-not y))
+        (lam h
+          (path i
+            (pair
+              (com k
+                Bool
+                1
+                0
+                (app not y)
+                (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y)))))
+                  ((= i 1)
+                    (com l
+                      Bool
+                      0
+                      1
+                      (app not (at (snd h) k))
+                      (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y)))))))
+              (path j
+                (com k
+                  Bool
+                  0
+                  1
+                  (app
+                    not
+                    (com k
+                      Bool
+                      1
+                      0
+                      (com k
+                        Bool
+                        1
+                        j
+                        (app not y)
+                        (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y)))))
+                          ((= i 1)
+                            (com l
+                              Bool
+                              0
+                              1
+                              (app not (at (snd h) k))
+                              (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y)))))))
+                      (((= i 0) (com l Bool 0 k (app not (at (app not-not y) j)) (((= j 0) (at (app not-not (app not y)) l)) ((= j 1) (app not y)))))
+                        ((= i 1)
+                          (com l
+                            Bool
+                            0
+                            k
+                            (app not (at (snd h) j))
+                            (((= j 0) (at (app not-not (fst h)) l)) ((= j 1) (app not y)))))
+                        ((= j 0)
+                          (at
+                            (app
+                              not-not
+                              (com k
+                                Bool
+                                1
+                                0
+                                (app not y)
+                                (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y)))))
+                                  ((= i 1)
+                                    (com l
+                                      Bool
+                                      0
+                                      1
+                                      (app not (at (snd h) k))
+                                      (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y))))))))
+                            k))
+                        ((= j 1) (app not y)))))
+                  (((= i 0) (at (app not-not (at (app not-not y) j)) k))
+                    ((= i 1) (at (app not-not (at (snd h) j)) k))
+                    ((= j 0)
+                      (at
+                        (app
+                          not-not
+                          (app
+                            not
+                            (com k
+                              Bool
+                              1
+                              0
+                              (app not y)
+                              (((= i 0) (com l Bool 0 1 (app not (at (app not-not y) k)) (((= k 0) (at (app not-not (app not y)) l)) ((= k 1) (app not y)))))
+                                ((= i 1)
+                                  (com l
+                                    Bool
+                                    0
+                                    1
+                                    (app not (at (snd h) k))
+                                    (((= k 0) (at (app not-not (fst h)) l)) ((= k 1) (app not y)))))))))
+                        k))
+                    ((= j 1) (at (app not-not y) k))))))))))))
+
 (def neg-path (Path i (U 0) Bool Bool) (app (app (app ua Bool) Bool) neg-equiv))
+
 (def neg-true Bool (coe i (at neg-path i) 0 1 true))
+
 (def neg-false Bool (coe i (at neg-path i) 0 1 false))
+
 (def neg-inverse Bool (coe i (at neg-path i) 1 0 true))
+
 (def neg-twice Bool (coe i (at neg-path i) 0 1 neg-true))
 
-(def equiv-total-contr (Pi B (U 0) (Sigma c (Sigma A (U 0) (app (app Equiv A) B)) (Pi w (Sigma A (U 0) (app (app Equiv A) B)) (Path i (Sigma A (U 0) (app (app Equiv A) B)) c w)))) (lam B (pair (pair B (app id-equiv B)) (lam w (path i (pair (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w)))) (pair (lam g (unglue (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w)))) g)) (lam b (pair (pair (glue (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w)))) (com k B 1 0 b (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k)) ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k)))) (((= i 0) (fst (fst (app (snd (app id-equiv B)) b)))) ((= i 1) (fst (fst (app (snd (snd w)) b)))))) (path j (com k B 1 j b (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k)) ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k)))))) (lam v (path l (pair (glue (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w)))) (com k B 1 0 b (((= i 0) (at (snd (at (app (snd (app (snd (app id-equiv B)) b)) v) l)) k)) ((= i 1) (at (snd (at (app (snd (app (snd (snd w)) b)) v) l)) k)) ((= l 0) (com k B 1 k b (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k)) ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k))))) ((= l 1) (at (snd v) k)))) (((= i 0) (fst (at (app (snd (app (snd (app id-equiv B)) b)) v) l))) ((= i 1) (fst (at (app (snd (app (snd (snd w)) b)) v) l))))) (path j (com k B 1 j b (((= i 0) (at (snd (at (app (snd (app (snd (app id-equiv B)) b)) v) l)) k)) ((= i 1) (at (snd (at (app (snd (app (snd (snd w)) b)) v) l)) k)) ((= l 0) (com k B 1 k b (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k)) ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k))))) ((= l 1) (at (snd v) k)))))))))))))))))
-(def transport-equiv (Pi A (U 0) (Pi B (U 0) (Pi p (Path i (U 0) A B) (app (app Equiv A) B)))) (lam A (lam B (lam p (pair (lam x (coe i (at p i) 0 1 x)) (coe j (Pi b (at p j) (app Contr (app (app (app (app Fiber A) (at p j)) (lam x (coe i (at p i) 0 j x))) b))) 0 1 (snd (app id-equiv A))))))))
+(def equiv-total-contr
+  (Pi B
+    (U 0)
+    (Sigma c
+      (Sigma A (U 0) (app (app Equiv A) B))
+      (Pi w
+        (Sigma A (U 0) (app (app Equiv A) B))
+        (Path i (Sigma A (U 0) (app (app Equiv A) B)) c w))))
+  (lam B
+    (pair
+      (pair B (app id-equiv B))
+      (lam w
+        (path i
+          (pair
+            (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w))))
+            (pair
+              (lam g (unglue (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w)))) g))
+              (lam b
+                (pair
+                  (pair
+                    (glue
+                      (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w))))
+                      (com k
+                        B
+                        1
+                        0
+                        b
+                        (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k))
+                          ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k))))
+                      (((= i 0) (fst (fst (app (snd (app id-equiv B)) b))))
+                        ((= i 1) (fst (fst (app (snd (snd w)) b))))))
+                    (path j
+                      (com k
+                        B
+                        1
+                        j
+                        b
+                        (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k))
+                          ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k))))))
+                  (lam v
+                    (path l
+                      (pair
+                        (glue
+                          (Glue B (((= i 0) B (app id-equiv B)) ((= i 1) (fst w) (snd w))))
+                          (com k
+                            B
+                            1
+                            0
+                            b
+                            (((= i 0) (at (snd (at (app (snd (app (snd (app id-equiv B)) b)) v) l)) k))
+                              ((= i 1) (at (snd (at (app (snd (app (snd (snd w)) b)) v) l)) k))
+                              ((= l 0)
+                                (com k
+                                  B
+                                  1
+                                  k
+                                  b
+                                  (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k))
+                                    ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k)))))
+                              ((= l 1) (at (snd v) k))))
+                          (((= i 0) (fst (at (app (snd (app (snd (app id-equiv B)) b)) v) l)))
+                            ((= i 1) (fst (at (app (snd (app (snd (snd w)) b)) v) l)))))
+                        (path j
+                          (com k
+                            B
+                            1
+                            j
+                            b
+                            (((= i 0) (at (snd (at (app (snd (app (snd (app id-equiv B)) b)) v) l)) k))
+                              ((= i 1) (at (snd (at (app (snd (app (snd (snd w)) b)) v) l)) k))
+                              ((= l 0)
+                                (com k
+                                  B
+                                  1
+                                  k
+                                  b
+                                  (((= i 0) (at (snd (fst (app (snd (app id-equiv B)) b))) k))
+                                    ((= i 1) (at (snd (fst (app (snd (snd w)) b))) k)))))
+                              ((= l 1) (at (snd v) k)))))))))))))))))
 
-; Full univalence via contractibility of total equivalences.
-(def Contr1 (Pi A (U 1) (U 1)) (lam A (Sigma c A (Pi x A (Path i A c x)))))
-(def Equiv1 (Pi A (U 1) (Pi B (U 1) (U 1))) (lam A (lam B (Sigma f (Pi x A B) (Pi b B (app Contr1 (Sigma a A (Path i B (app f a) b))))))))
-(def Equiv10 (Pi A (U 1) (Pi B (U 0) (U 1))) (lam A (lam B (Sigma f (Pi x A B) (Pi b B (app Contr1 (Sigma a A (Path i B (app f a) b))))))))
-(def id-equiv1 (Pi A (U 1) (app (app Equiv1 A) A))
-  (lam A (pair (lam x x)
-    (lam b (pair (pair b (path j b))
-      (lam h (path i
+(def transport-equiv
+  (Pi A (U 0) (Pi B (U 0) (Pi p (Path i (U 0) A B) (app (app Equiv A) B))))
+  (lam A
+    (lam B
+      (lam p
         (pair
-          (com k A 1 0 b (((= i 0) b) ((= i 1) (at (snd h) k))))
-          (path j (com k A 1 j b (((= i 0) b) ((= i 1) (at (snd h) k))))))))))))
-)
+          (lam x (coe i (at p i) 0 1 x))
+          (coe j
+            (Pi b
+              (at p j)
+              (app Contr (app (app (app (app Fiber A) (at p j)) (lam x (coe i (at p i) 0 j x))) b)))
+            0
+            1
+            (snd (app id-equiv A))))))))
 
-(def iso-to-equiv10 (Pi A (U 1) (Pi B (U 0) (Pi f (Pi x A B) (Pi g (Pi y B A) (Pi s (Pi y B (Path i B (app f (app g y)) y)) (Pi t (Pi x A (Path i A (app g (app f x)) x)) (app (app Equiv10 A) B))))))) (lam A (lam B (lam f (lam g (lam s (lam t (pair f (lam y (pair (pair (app g y) (app s y)) (lam h (path i (pair (com k A 1 0 (app g y) (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y))))) ((= i 1) (com l A 0 1 (app g (at (snd h) k)) (((= k 0) (at (app t (fst h)) l)) ((= k 1) (app g y))))))) (path j (com k B 0 1 (app f (com k A 1 0 (com k A 1 j (app g y) (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y))))) ((= i 1) (com l A 0 1 (app g (at (snd h) k)) (((= k 0) (at (app t (fst h)) l)) ((= k 1) (app g y))))))) (((= i 0) (com l A 0 k (app g (at (app s y) j)) (((= j 0) (at (app t (app g y)) l)) ((= j 1) (app g y))))) ((= i 1) (com l A 0 k (app g (at (snd h) j)) (((= j 0) (at (app t (fst h)) l)) ((= j 1) (app g y))))) ((= j 0) (at (app t (com k A 1 0 (app g y) (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y))))) ((= i 1) (com l A 0 1 (app g (at (snd h) k)) (((= k 0) (at (app t (fst h)) l)) ((= k 1) (app g y)))))))) k)) ((= j 1) (app g y))))) (((= i 0) (at (app s (at (app s y) j)) k)) ((= i 1) (at (app s (at (snd h) j)) k)) ((= j 0) (at (app s (app f (com k A 1 0 (app g y) (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y))))) ((= i 1) (com l A 0 1 (app g (at (snd h) k)) (((= k 0) (at (app t (fst h)) l)) ((= k 1) (app g y))))))))) k)) ((= j 1) (at (app s y) k))))))))))))))))))
+(def Contr1 (Pi A (U 1) (U 1)) (lam A (Sigma c A (Pi x A (Path i A c x)))))
+
+(def Equiv1
+  (Pi A (U 1) (Pi B (U 1) (U 1)))
+  (lam A (lam B (Sigma f (Pi x A B) (Pi b B (app Contr1 (Sigma a A (Path i B (app f a) b))))))))
+
+(def Equiv10
+  (Pi A (U 1) (Pi B (U 0) (U 1)))
+  (lam A (lam B (Sigma f (Pi x A B) (Pi b B (app Contr1 (Sigma a A (Path i B (app f a) b))))))))
+
+(def id-equiv1
+  (Pi A (U 1) (app (app Equiv1 A) A))
+  (lam A
+    (pair
+      (lam x x)
+      (lam b
+        (pair
+          (pair b (path j b))
+          (lam h
+            (path i
+              (pair
+                (com k A 1 0 b (((= i 0) b) ((= i 1) (at (snd h) k))))
+                (path j (com k A 1 j b (((= i 0) b) ((= i 1) (at (snd h) k)))))))))))))
+
+(def iso-to-equiv10
+  (Pi A
+    (U 1)
+    (Pi B
+      (U 0)
+      (Pi f
+        (Pi x A B)
+        (Pi g
+          (Pi y B A)
+          (Pi s
+            (Pi y B (Path i B (app f (app g y)) y))
+            (Pi t (Pi x A (Path i A (app g (app f x)) x)) (app (app Equiv10 A) B)))))))
+  (lam A
+    (lam B
+      (lam f
+        (lam g
+          (lam s
+            (lam t
+              (pair
+                f
+                (lam y
+                  (pair
+                    (pair (app g y) (app s y))
+                    (lam h
+                      (path i
+                        (pair
+                          (com k
+                            A
+                            1
+                            0
+                            (app g y)
+                            (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y)))))
+                              ((= i 1)
+                                (com l
+                                  A
+                                  0
+                                  1
+                                  (app g (at (snd h) k))
+                                  (((= k 0) (at (app t (fst h)) l)) ((= k 1) (app g y)))))))
+                          (path j
+                            (com k
+                              B
+                              0
+                              1
+                              (app
+                                f
+                                (com k
+                                  A
+                                  1
+                                  0
+                                  (com k
+                                    A
+                                    1
+                                    j
+                                    (app g y)
+                                    (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y)))))
+                                      ((= i 1)
+                                        (com l
+                                          A
+                                          0
+                                          1
+                                          (app g (at (snd h) k))
+                                          (((= k 0) (at (app t (fst h)) l)) ((= k 1) (app g y)))))))
+                                  (((= i 0) (com l A 0 k (app g (at (app s y) j)) (((= j 0) (at (app t (app g y)) l)) ((= j 1) (app g y)))))
+                                    ((= i 1)
+                                      (com l
+                                        A
+                                        0
+                                        k
+                                        (app g (at (snd h) j))
+                                        (((= j 0) (at (app t (fst h)) l)) ((= j 1) (app g y)))))
+                                    ((= j 0)
+                                      (at
+                                        (app
+                                          t
+                                          (com k
+                                            A
+                                            1
+                                            0
+                                            (app g y)
+                                            (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y)))))
+                                              ((= i 1)
+                                                (com l
+                                                  A
+                                                  0
+                                                  1
+                                                  (app g (at (snd h) k))
+                                                  (((= k 0) (at (app t (fst h)) l))
+                                                    ((= k 1) (app g y))))))))
+                                        k))
+                                    ((= j 1) (app g y)))))
+                              (((= i 0) (at (app s (at (app s y) j)) k))
+                                ((= i 1) (at (app s (at (snd h) j)) k))
+                                ((= j 0)
+                                  (at
+                                    (app
+                                      s
+                                      (app
+                                        f
+                                        (com k
+                                          A
+                                          1
+                                          0
+                                          (app g y)
+                                          (((= i 0) (com l A 0 1 (app g (at (app s y) k)) (((= k 0) (at (app t (app g y)) l)) ((= k 1) (app g y)))))
+                                            ((= i 1)
+                                              (com l
+                                                A
+                                                0
+                                                1
+                                                (app g (at (snd h) k))
+                                                (((= k 0) (at (app t (fst h)) l))
+                                                  ((= k 1) (app g y)))))))))
+                                    k))
+                                ((= j 1) (at (app s y) k))))))))))))))))))
+
 (def Total (Pi B (U 0) (U 1)) (lam B (Sigma A (U 0) (app (app Equiv A) B))))
-(def reverse1 (Pi T (U 1) (Pi a T (Pi b T (Pi p (Path i T a b) (Path i T b a))))) (lam T (lam a (lam b (lam p (path i (com k T 1 0 b (((= i 0) b) ((= i 1) (at p k))))))))))
-(def concat1 (Pi T (U 1) (Pi a T (Pi b T (Pi c T (Pi p (Path i T a b) (Pi q (Path i T b c) (Path i T a c))))))) (lam T (lam a (lam b (lam c (lam p (lam q (path i (com k T 0 1 (at p i) (((= i 0) a) ((= i 1) (at q k))))))))))))
-(def path-to-equiv (Pi A (U 0) (Pi B (U 0) (Pi p (Path i (U 0) A B) (app (app Equiv A) B)))) (lam A (lam B (lam p (coe i (app (app Equiv (at p i)) B) 1 0 (app id-equiv B))))))
-(def decode (Pi A (U 0) (Pi B (U 0) (Pi e (app (app Equiv A) B) (Path i (U 0) A B)))) (lam A (lam B (lam e (path i (fst (at (app (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair A e)) (app (snd (app equiv-total-contr B)) (pair A e))) i)))))))
-(def decode-section (Pi A (U 0) (Pi B (U 0) (Pi e (app (app Equiv A) B) (Path l (app (app Equiv A) B) (app (app (app path-to-equiv A) B) (app (app (app decode A) B) e)) e)))) (lam A (lam B (lam e (path l (com i (app (app Equiv (fst (at (app (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair A e)) (app (snd (app equiv-total-contr B)) (pair A e))) i))) B) 1 0 (app id-equiv B) (((= l 0) (coe j (app (app Equiv (fst (at (app (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair A e)) (app (snd (app equiv-total-contr B)) (pair A e))) j))) B) 1 i (app id-equiv B))) ((= l 1) (snd (at (app (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair A e)) (app (snd (app equiv-total-contr B)) (pair A e))) i))))))))))
-(def contr-paths (Pi T (U 1) (Pi c (app Contr1 T) (Pi a T (Pi b T (Pi p (Path j T a b) (Pi q (Path j T a b) (Path i (Path j T a b) p q))))))) (lam T (lam c (lam a (lam b (lam p (lam q (path i (path j (com k T 0 1 (fst c) (((= j 0) (at (app (snd c) a) k)) ((= j 1) (at (app (snd c) b) k)) ((= i 0) (at (app (snd c) (at p j)) k)) ((= i 1) (at (app (snd c) (at q j)) k)))))))))))))
-(def decode-base (Pi B (U 0) (Path l (Path j (U 0) B B) (app (app (app decode B) B) (app (app (app path-to-equiv B) B) (path j B))) (path j B))) (lam B (app (app (app (app (app (app concat1 (Path j (U 0) B B)) (app (app (app decode B) B) (app (app (app path-to-equiv B) B) (path j B)))) (app (app (app decode B) B) (app id-equiv B))) (path j B)) (path l (app (app (app decode B) B) (at (path l (coe i (app (app Equiv B) B) 1 l (app id-equiv B))) l)))) (path l (path j (fst (at (at (app (app (app (app (app (app contr-paths (app Total B)) (app equiv-total-contr B)) (pair B (app id-equiv B))) (pair B (app id-equiv B))) (app (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair B (app id-equiv B))) (app (snd (app equiv-total-contr B)) (pair B (app id-equiv B))))) (path j (pair B (app id-equiv B)))) l) j)))))))
-(def decode-retraction (Pi A (U 0) (Pi B (U 0) (Pi p (Path i (U 0) A B) (Path l (Path i (U 0) A B) (app (app (app decode A) B) (app (app (app path-to-equiv A) B) p)) p)))) (lam A (lam B (lam p (coe i (Path l (Path j (U 0) (fst (at (app (snd (app (snd (app id-equiv1 (U 0))) B)) (pair A p)) i)) B) (app (app (app decode (fst (at (app (snd (app (snd (app id-equiv1 (U 0))) B)) (pair A p)) i))) B) (app (app (app path-to-equiv (fst (at (app (snd (app (snd (app id-equiv1 (U 0))) B)) (pair A p)) i))) B) (snd (at (app (snd (app (snd (app id-equiv1 (U 0))) B)) (pair A p)) i)))) (snd (at (app (snd (app (snd (app id-equiv1 (U 0))) B)) (pair A p)) i))) 0 1 (app decode-base B))))))
-(def univalence (Pi A (U 0) (Pi B (U 0) (app (app Equiv10 (Path i (U 0) A B)) (app (app Equiv A) B)))) (lam A (lam B (app (app (app (app (app (app iso-to-equiv10 (Path i (U 0) A B)) (app (app Equiv A) B)) (app (app path-to-equiv A) B)) (app (app decode A) B)) (app (app decode-section A) B)) (app (app decode-retraction A) B)))))
+
+(def reverse1
+  (Pi T (U 1) (Pi a T (Pi b T (Pi p (Path i T a b) (Path i T b a)))))
+  (lam T (lam a (lam b (lam p (path i (com k T 1 0 b (((= i 0) b) ((= i 1) (at p k))))))))))
+
+(def concat1
+  (Pi T (U 1) (Pi a T (Pi b T (Pi c T (Pi p (Path i T a b) (Pi q (Path i T b c) (Path i T a c)))))))
+  (lam T
+    (lam a
+      (lam b
+        (lam c (lam p (lam q (path i (com k T 0 1 (at p i) (((= i 0) a) ((= i 1) (at q k))))))))))))
+
+(def path-to-equiv
+  (Pi A (U 0) (Pi B (U 0) (Pi p (Path i (U 0) A B) (app (app Equiv A) B))))
+  (lam A (lam B (lam p (coe i (app (app Equiv (at p i)) B) 1 0 (app id-equiv B))))))
+
+(def decode
+  (Pi A (U 0) (Pi B (U 0) (Pi e (app (app Equiv A) B) (Path i (U 0) A B))))
+  (lam A
+    (lam B
+      (lam e
+        (path i
+          (fst
+            (at
+              (app
+                (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair A e))
+                (app (snd (app equiv-total-contr B)) (pair A e)))
+              i)))))))
+
+(def total-section
+  (Pi A
+    (U 0)
+    (Pi B
+      (U 0)
+      (Pi e
+        (app (app Equiv A) B)
+        (Pi q
+          (Path j (app Total B) (pair A e) (pair B (app id-equiv B)))
+          (Path l
+            (app (app Equiv A) B)
+            (coe i (app (app Equiv (fst (at q i))) B) 1 0 (app id-equiv B))
+            e)))))
+  (lam A
+    (lam B
+      (lam e
+        (lam q
+          (path l
+            (com i
+              (app (app Equiv (fst (at q i))) B)
+              1
+              0
+              (app id-equiv B)
+              (((= l 0) (coe j (app (app Equiv (fst (at q j))) B) 1 i (app id-equiv B)))
+                ((= l 1) (snd (at q i)))))))))))
+
+(def decode-section
+  (Pi A
+    (U 0)
+    (Pi B
+      (U 0)
+      (Pi e
+        (app (app Equiv A) B)
+        (Path l
+          (app (app Equiv A) B)
+          (app (app (app path-to-equiv A) B) (app (app (app decode A) B) e))
+          e))))
+  (lam A
+    (lam B
+      (lam e
+        (app
+          (app (app (app total-section A) B) e)
+          (app
+            (app (app (app reverse1 (app Total B)) (pair B (app id-equiv B))) (pair A e))
+            (app (snd (app equiv-total-contr B)) (pair A e))))))))
+
+(def contr-paths
+  (Pi T
+    (U 1)
+    (Pi c
+      (app Contr1 T)
+      (Pi a T (Pi b T (Pi p (Path j T a b) (Pi q (Path j T a b) (Path i (Path j T a b) p q)))))))
+  (lam T
+    (lam c
+      (lam a
+        (lam b
+          (lam p
+            (lam q
+              (path i
+                (path j
+                  (com k
+                    T
+                    0
+                    1
+                    (fst c)
+                    (((= j 0) (at (app (snd c) a) k))
+                      ((= j 1) (at (app (snd c) b) k))
+                      ((= i 0) (at (app (snd c) (at p j)) k))
+                      ((= i 1) (at (app (snd c) (at q j)) k)))))))))))))
+
+(def total-loop-trivial
+  (Pi B
+    (U 0)
+    (Pi q
+      (Path j (app Total B) (pair B (app id-equiv B)) (pair B (app id-equiv B)))
+      (Path l (Path j (U 0) B B) (path j (fst (at q j))) (path j B))))
+  (lam B
+    (lam q
+      (path l
+        (path j
+          (fst
+            (at
+              (at
+                (app
+                  (app
+                    (app
+                      (app
+                        (app (app contr-paths (app Total B)) (app equiv-total-contr B))
+                        (pair B (app id-equiv B)))
+                      (pair B (app id-equiv B)))
+                    q)
+                  (path j (pair B (app id-equiv B))))
+                l)
+              j)))))))
+
+(def encode-refl
+  (Pi B
+    (U 0)
+    (Path l (app (app Equiv B) B) (app (app (app path-to-equiv B) B) (path j B)) (app id-equiv B)))
+  (lam B (path l (coe i (app (app Equiv B) B) 1 l (app id-equiv B)))))
+
+(def cong01
+  (Pi X
+    (U 0)
+    (Pi Y
+      (U 1)
+      (Pi f (Pi x X Y) (Pi a X (Pi b X (Pi p (Path i X a b) (Path i Y (app f a) (app f b))))))))
+  (lam X (lam Y (lam f (lam a (lam b (lam p (path i (app f (at p i))))))))))
+
+(def decode-base
+  (Pi B
+    (U 0)
+    (Path l
+      (Path j (U 0) B B)
+      (app (app (app decode B) B) (app (app (app path-to-equiv B) B) (path j B)))
+      (path j B)))
+  (lam B
+    (app
+      (app
+        (app
+          (app
+            (app
+              (app concat1 (Path j (U 0) B B))
+              (app (app (app decode B) B) (app (app (app path-to-equiv B) B) (path j B))))
+            (app (app (app decode B) B) (app id-equiv B)))
+          (path j B))
+        (app
+          (app
+            (app
+              (app
+                (app (app cong01 (app (app Equiv B) B)) (Path j (U 0) B B))
+                (app (app decode B) B))
+              (app (app (app path-to-equiv B) B) (path j B)))
+            (app id-equiv B))
+          (app encode-refl B)))
+      (app
+        (app total-loop-trivial B)
+        (app
+          (app
+            (app (app reverse1 (app Total B)) (pair B (app id-equiv B)))
+            (pair B (app id-equiv B)))
+          (app (snd (app equiv-total-contr B)) (pair B (app id-equiv B))))))))
+
+(def path-induction1
+  (Pi B
+    (U 0)
+    (Pi P
+      (Pi w (Sigma X (U 0) (Path j (U 0) X B)) (U 1))
+      (Pi r (app P (pair B (path j B))) (Pi A (U 0) (Pi p (Path j (U 0) A B) (app P (pair A p)))))))
+  (lam B
+    (lam P
+      (lam r
+        (lam A
+          (lam p
+            (coe i (app P (at (app (snd (app (snd (app id-equiv1 (U 0))) B)) (pair A p)) i)) 0 1 r)))))))
+
+(def decode-retraction
+  (Pi A
+    (U 0)
+    (Pi B
+      (U 0)
+      (Pi p
+        (Path i (U 0) A B)
+        (Path l
+          (Path i (U 0) A B)
+          (app (app (app decode A) B) (app (app (app path-to-equiv A) B) p))
+          p))))
+  (lam A
+    (lam B
+      (lam p
+        (app
+          (app
+            (app
+              (app
+                (app path-induction1 B)
+                (lam w
+                  (Path l
+                    (Path j (U 0) (fst w) B)
+                    (app
+                      (app (app decode (fst w)) B)
+                      (app (app (app path-to-equiv (fst w)) B) (snd w)))
+                    (snd w))))
+              (app decode-base B))
+            A)
+          p)))))
+
+(def univalence
+  (Pi A (U 0) (Pi B (U 0) (app (app Equiv10 (Path i (U 0) A B)) (app (app Equiv A) B))))
+  (lam A
+    (lam B
+      (app
+        (app
+          (app
+            (app
+              (app (app iso-to-equiv10 (Path i (U 0) A B)) (app (app Equiv A) B))
+              (app (app path-to-equiv A) B))
+            (app (app decode A) B))
+          (app (app decode-section A) B))
+        (app (app decode-retraction A) B)))))
