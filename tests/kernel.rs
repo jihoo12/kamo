@@ -388,3 +388,71 @@ fn generated_boolean_programs_match_an_independent_oracle() {
         }
     }
 }
+
+#[test]
+fn deep_natural_quotation_uses_a_bounded_stack() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            let mut source = String::from("(def n0 Nat zero)\n");
+            for i in 1..=30_000 {
+                source.push_str(&format!("(def n{i} Nat (suc n{}))\n", i - 1));
+            }
+            let p = CheckedProgram::check(&source).unwrap();
+            let expected = format!("{}zero{}", "(suc ".repeat(30_000), ")".repeat(30_000));
+            for optimized in [false, true] {
+                assert_eq!(
+                    p.normalize_with(
+                        "n30000",
+                        Options {
+                            optimized,
+                            ..Options::default()
+                        }
+                    )
+                    .unwrap()
+                    .text,
+                    expected
+                );
+            }
+            assert_eq!(p.normalize("n0").unwrap().text, "zero");
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn deep_structural_quotation_returns_a_resource_error() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            let mut source = String::from("(def T0 (U 0) Bool)\n(def v0 T0 true)\n");
+            for i in 1..=100 {
+                source.push_str(&format!(
+                    "(def T{i} (U 0) (Sigma x Bool T{}))\n(def v{i} T{i} (pair true v{}))\n",
+                    i - 1,
+                    i - 1
+                ));
+            }
+            let p = CheckedProgram::check(&source).unwrap();
+            for optimized in [false, true] {
+                let error = p
+                    .normalize_with(
+                        "v100",
+                        Options {
+                            optimized,
+                            ..Options::default()
+                        },
+                    )
+                    .unwrap_err();
+                assert!(
+                    error.message.contains("quotation depth budget exhausted"),
+                    "{error}"
+                );
+            }
+            assert_eq!(p.normalize("v0").unwrap().text, "true");
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

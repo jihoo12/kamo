@@ -6,6 +6,7 @@ use crate::{Error, Result};
 struct Names {
     terms: Vec<u32>,
     dims: Vec<u32>,
+    depth: usize,
 }
 impl Names {
     fn dim(&self, d: Dim) -> Result<String> {
@@ -26,6 +27,25 @@ impl Engine<'_> {
         self.quote_inner(v, Some(ty), face, &mut Names::default())
     }
     fn quote_inner(
+        &mut self,
+        v: ValId,
+        ty: Option<ValId>,
+        face: FaceId,
+        n: &mut Names,
+    ) -> Result<String> {
+        // Work/node budgets do not bound the native call stack. Keep structural
+        // quotation shallow; flat successor chains are handled iteratively.
+        if n.depth >= 64 {
+            return Err(Error::plain(
+                "quotation depth budget exhausted (not a proof rejection)",
+            ));
+        }
+        n.depth += 1;
+        let result = self.quote_step(v, ty, face, n);
+        n.depth -= 1;
+        result
+    }
+    fn quote_step(
         &mut self,
         v: ValId,
         ty: Option<ValId>,
@@ -134,7 +154,28 @@ impl Engine<'_> {
             }
             Val::Suc(k) => {
                 let nat = self.alloc(Val::Nat);
-                format!("(suc {})", self.quote_inner(k, Some(nat), face, n)?)
+                let mut count = 1;
+                let mut tail = k;
+                loop {
+                    let forced = self.force(tail, face)?;
+                    if let Val::Suc(next) = self.get(forced) {
+                        count += 1;
+                        tail = next;
+                    } else {
+                        tail = forced;
+                        break;
+                    }
+                }
+                let tail = self.quote_inner(tail, Some(nat), face, n)?;
+                let mut out = String::with_capacity(count * 6 + tail.len());
+                for _ in 0..count {
+                    out.push_str("(suc ");
+                }
+                out.push_str(&tail);
+                for _ in 0..count {
+                    out.push(')');
+                }
+                out
             }
             Val::App(f, a) => {
                 let fty = self.neutral_type(f, face)?;

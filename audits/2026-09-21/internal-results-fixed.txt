@@ -1,0 +1,10 @@
+
+running 3 tests
+test eval::audit_substitution::optimized_shared_substitution ... optimized=true: lazy=false, forced=false
+ok
+test eval::audit_substitution::reference_shared_substitution ... optimized=false: lazy=false, forced=false
+ok
+test face::audit_face_oracle::entailment_and_quantification_match_finite_partition_oracle ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.05s
+

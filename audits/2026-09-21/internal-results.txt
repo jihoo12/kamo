@@ -1,0 +1,27 @@
+
+running 3 tests
+test eval::audit_substitution::optimized_shared_substitution ... optimized=true: lazy=true, forced=false
+
+thread 'eval::audit_substitution::optimized_shared_substitution' (57) panicked at /tmp/kamo-audit.nIj07C/src/eval.rs:1274:13:
+assertion `left == right` failed: conversion changed after forcing
+  left: true
+ right: false
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test eval::audit_substitution::reference_shared_substitution ... optimized=false: lazy=true, forced=false
+
+thread 'eval::audit_substitution::reference_shared_substitution' (58) panicked at /tmp/kamo-audit.nIj07C/src/eval.rs:1274:13:
+assertion `left == right` failed: conversion changed after forcing
+  left: true
+ right: false
+FAILED
+test face::audit_face_oracle::entailment_and_quantification_match_finite_partition_oracle ... ok
+
+failures:
+
+failures:
+    eval::audit_substitution::optimized_shared_substitution
+    eval::audit_substitution::reference_shared_substitution
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.05s
+

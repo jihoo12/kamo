@@ -127,3 +127,8 @@ some introduction forms still need annotations when reused as inference inputs.
 
 See [rule correspondence](docs/rules.md) for the theory, evaluator, and trusted
 implementation boundary.
+
+Quotation handles successor chains iteratively and limits other structural
+quotation to 64 recursive levels, returning a resource error for deeper output.
+See the [kernel audit and remediation](docs/kernel-audit.md) for the conversion
+and stack-exhaustion regressions.
