@@ -422,7 +422,7 @@ fn deep_natural_quotation_uses_a_bounded_stack() {
 }
 
 #[test]
-fn deep_structural_quotation_returns_a_resource_error() {
+fn deep_structural_quotation_is_iterative() {
     std::thread::Builder::new()
         .stack_size(2 * 1024 * 1024)
         .spawn(|| {
@@ -436,7 +436,7 @@ fn deep_structural_quotation_returns_a_resource_error() {
             }
             let p = CheckedProgram::check(&source).unwrap();
             for optimized in [false, true] {
-                let error = p
+                let result = p
                     .normalize_with(
                         "v100",
                         Options {
@@ -444,15 +444,144 @@ fn deep_structural_quotation_returns_a_resource_error() {
                             ..Options::default()
                         },
                     )
-                    .unwrap_err();
-                assert!(
-                    error.message.contains("quotation depth budget exhausted"),
-                    "{error}"
+                    .unwrap();
+                assert_eq!(
+                    result.text,
+                    format!("{}true{}", "(pair true ".repeat(100), ")".repeat(100))
                 );
+                for (max_output_bytes, max_quote_tasks, expected) in [
+                    (64, 250_000, "output byte"),
+                    (16_777_216, 32, "pending-work"),
+                ] {
+                    let err = p
+                        .normalize_with(
+                            "v100",
+                            Options {
+                                optimized,
+                                max_output_bytes,
+                                max_quote_tasks,
+                                ..Options::default()
+                            },
+                        )
+                        .unwrap_err();
+                    assert!(err.message.contains(expected), "{err}");
+                }
             }
             assert_eq!(p.normalize("v0").unwrap().text, "true");
         })
         .unwrap()
         .join()
         .unwrap();
+}
+
+#[test]
+fn quotation_output_budget_is_exact_and_errors_keep_progress() {
+    let p = CheckedProgram::check("(def t Bool true)").unwrap();
+    assert_eq!(
+        p.normalize_with(
+            "t",
+            Options {
+                max_output_bytes: 4,
+                ..Options::default()
+            }
+        )
+        .unwrap()
+        .text,
+        "true"
+    );
+    let err = p
+        .normalize_with(
+            "t",
+            Options {
+                max_output_bytes: 3,
+                ..Options::default()
+            },
+        )
+        .unwrap_err();
+    assert!(err.message.contains("output byte budget exhausted"));
+    assert!(err.message.contains("during quotation"));
+    assert!(err.message.contains("bytes emitted"));
+}
+
+#[test]
+fn iterative_quotation_scopes_eliminator_binders() {
+    let ty = "(Pi n Nat Nat)";
+    let source =
+        format!("(def f {ty} (lam n (nat-elim (lam k Nat) zero (lam k (lam ih (suc ih))) n)))");
+    let p = CheckedProgram::check(&source).unwrap();
+    for optimized in [false, true] {
+        let normal = p
+            .normalize_with(
+                "f",
+                Options {
+                    optimized,
+                    ..Options::default()
+                },
+            )
+            .unwrap()
+            .text;
+        let roundtrip =
+            format!("{source}\n(def g {ty} {normal})\n(def eq (Path i {ty} f g) (path i f))");
+        CheckedProgram::check(&roundtrip).unwrap();
+    }
+}
+
+#[test]
+fn compacted_arenas_preserve_normal_forms_and_sessions() {
+    let mut source = String::from("(def n0 Nat zero)\n");
+    for i in 1..=3000 {
+        source.push_str(&format!("(def n{i} Nat (suc n{}))\n", i - 1));
+    }
+    let p = CheckedProgram::check(&source).unwrap();
+    let reference = p
+        .normalize_with(
+            "n3000",
+            Options {
+                optimized: false,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+    for _ in 0..2 {
+        let compact = p
+            .normalize_with(
+                "n3000",
+                Options {
+                    max_nodes: 512,
+                    ..Options::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(compact.text, reference.text);
+        assert!(compact.statistics.collections > 0);
+        assert!(compact.statistics.reclaimed_nodes > 0);
+        assert!(compact.statistics.value_nodes < 512);
+    }
+    assert_eq!(p.normalize("n0").unwrap().text, "zero");
+}
+
+#[test]
+fn compacted_glue_and_capture_trimming_match_reference() {
+    let p = CheckedProgram::check(include_str!("../examples/prelude.kamo")).unwrap();
+    for name in ["id-equiv", "ua", "bool-id-path"] {
+        let reference = p
+            .normalize_with(
+                name,
+                Options {
+                    optimized: false,
+                    ..Options::default()
+                },
+            )
+            .unwrap();
+        let compact = p
+            .normalize_with(
+                name,
+                Options {
+                    max_nodes: 1500,
+                    ..Options::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(compact.text, reference.text, "{name}");
+    }
 }

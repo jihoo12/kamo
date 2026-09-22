@@ -64,7 +64,22 @@ pub(crate) enum Val {
     GlueIntro(ValId, Vec<(FaceId, ValId)>),
     Unglue(ValId, ValId),
 }
+#[derive(Default)]
+struct Profile {
+    sites: std::collections::BTreeMap<(&'static str, u32), usize>,
+    unfolds: std::collections::BTreeMap<usize, usize>,
+    pushes: usize,
+}
 pub(crate) struct Engine<'a> {
+    profile: Option<Profile>,
+    support_cache: HashMap<ValId, Option<support::Support>>,
+    computing_support: bool,
+    pub collections: usize,
+    collection_at: usize,
+    pub reclaimed_nodes: usize,
+    pub allocated_values: usize,
+    capture_cache: HashMap<TermId, crate::capture::Slots>,
+    push_cache: HashMap<(ValId, SubId), ValId>,
     pub program: &'a Program,
     values: Arena<ValId, Val>,
     envs: Arena<EnvId, Env>,
@@ -87,6 +102,15 @@ pub(crate) struct Engine<'a> {
 impl<'a> Engine<'a> {
     pub fn new(program: &'a Program, optimized: bool, fuel: u64, max_nodes: usize) -> Self {
         Self {
+            support_cache: HashMap::default(),
+            computing_support: false,
+            collections: 0,
+            collection_at: (max_nodes / 2).clamp(1, 250_000),
+            reclaimed_nodes: 0,
+            allocated_values: 0,
+            capture_cache: HashMap::default(),
+            push_cache: HashMap::default(),
+            profile: std::env::var_os("KAMO_PROFILE").map(|_| Profile::default()),
             program,
             values: Arena::default(),
             envs: Arena::default(),
@@ -122,15 +146,22 @@ impl<'a> Engine<'a> {
         self.steps += 1;
         Ok(())
     }
+    #[track_caller]
     pub fn alloc(&mut self, v: Val) -> ValId {
         if self.optimized {
             if let Some(id) = self.value_intern.get(&v) {
                 return *id;
             }
+            if let Some(p) = &mut self.profile {
+                let l = std::panic::Location::caller();
+                *p.sites.entry((l.file(), l.line())).or_default() += 1;
+            }
+            self.allocated_values += 1;
             let id = self.values.alloc(v.clone());
             self.value_intern.insert(v, id);
             id
         } else {
+            self.allocated_values += 1;
             self.values.alloc(v)
         }
     }
@@ -179,6 +210,48 @@ impl<'a> Engine<'a> {
         self.alloc(Val::Var(v, Some(ty)))
     }
     pub fn thunk(&mut self, t: TermId, e: EnvId) -> ValId {
+        if self.optimized {
+            let simple = match self.program.terms.get(t).term {
+                Term::Var(i) => {
+                    let env = self.envs.get(e);
+                    return env.terms[env.terms.len() - 1 - i];
+                }
+                Term::U(l) => Some(Val::U(l)),
+                Term::Bool => Some(Val::Bool),
+                Term::Nat => Some(Val::Nat),
+                Term::True => Some(Val::True),
+                Term::False => Some(Val::False),
+                Term::Zero => Some(Val::Zero),
+                _ => None,
+            };
+            if let Some(v) = simple {
+                return self.alloc(v);
+            }
+        }
+        let e = if self.optimized {
+            let (ts, ds) = crate::capture::slots(self.program, t, &mut self.capture_cache);
+            let mut env = self.environment(e);
+            let tn = ts.last().map_or(0, |i| i + 1);
+            let dn = ds.last().map_or(0, |i| i + 1);
+            env.terms.drain(..env.terms.len() - tn);
+            env.dims.drain(..env.dims.len() - dn);
+            if tn > 0 {
+                let unused = self.alloc(Val::Zero);
+                for i in 0..tn {
+                    if ts.binary_search(&i).is_err() {
+                        env.terms[tn - 1 - i] = unused;
+                    }
+                }
+            }
+            for i in 0..dn {
+                if ds.binary_search(&i).is_err() {
+                    env.dims[dn - 1 - i] = Dim::Zero;
+                }
+            }
+            self.env(env)
+        } else {
+            e
+        };
         self.alloc(Val::Susp(t, e))
     }
     pub fn dim(&self, d: D, e: EnvId) -> Dim {
@@ -264,8 +337,23 @@ impl<'a> Engine<'a> {
         w
     }
     fn sub_uncached(&mut self, v: ValId, s: SubId) -> ValId {
+        if self.optimized && !self.computing_support && self.irrelevant(v, s) {
+            return v;
+        }
         if self.optimized {
             match self.get(v) {
+                Val::Pair(a, b) => {
+                    let a = self.sub(a, s);
+                    let b = self.sub(b, s);
+                    return self.alloc(Val::Pair(a, b));
+                }
+                Val::Var(x, ty) => {
+                    if let Some(image) = self.sub_term(s, x) {
+                        return image;
+                    }
+                    let ty = ty.map(|t| self.sub(t, s));
+                    return self.alloc(Val::Var(x, ty));
+                }
                 Val::U(_) | Val::Bool | Val::Nat | Val::True | Val::False | Val::Zero => return v,
                 Val::Susp(t, e)
                     if matches!(self.program.terms.get(t).term, Term::Global(_))
@@ -361,6 +449,21 @@ impl<'a> Engine<'a> {
             .substitute(f, &|v| if v == Dim::Var(x) { d } else { v })
     }
     fn push(&mut self, v: ValId, s: SubId) -> ValId {
+        if self.optimized
+            && let Some(w) = self.push_cache.get(&(v, s))
+        {
+            return *w;
+        }
+        let w = self.push_uncached(v, s);
+        if self.optimized {
+            self.push_cache.insert((v, s), w);
+        }
+        w
+    }
+    fn push_uncached(&mut self, v: ValId, s: SubId) -> ValId {
+        if let Some(p) = &mut self.profile {
+            p.pushes += 1;
+        }
         let out = match self.get(v) {
             Val::Sub(v, t) => {
                 let inner = self.push(v, t);
@@ -371,7 +474,7 @@ impl<'a> Engine<'a> {
                 let terms = env.terms.into_iter().map(|v| self.sub(v, s)).collect();
                 let dims = env.dims.into_iter().map(|d| self.sub_dim(s, d)).collect();
                 let e = self.env(Env { terms, dims });
-                Val::Susp(t, e)
+                return self.thunk(t, e);
             }
             Val::Var(x, ty) => {
                 if let Some(v) = self.sub_term(s, x) {
@@ -471,6 +574,11 @@ impl<'a> Engine<'a> {
         v
     }
     fn unfold_uncached(&mut self, t: TermId, e: EnvId) -> ValId {
+        if let Some(p) = &mut self.profile {
+            *p.unfolds
+                .entry(self.program.terms.get(t).offset)
+                .or_default() += 1;
+        }
         let val = match self.program.terms.get(t).term.clone() {
             Term::Var(i) => {
                 let ts = &self.envs.get(e).terms;
@@ -575,9 +683,19 @@ impl<'a> Engine<'a> {
         self.alloc(Val::App(f, a))
     }
     pub fn fst(&mut self, p: ValId) -> ValId {
+        if self.optimized
+            && let Val::Pair(a, _) = self.get(p)
+        {
+            return a;
+        }
         self.alloc(Val::Fst(p))
     }
     pub fn snd(&mut self, p: ValId) -> ValId {
+        if self.optimized
+            && let Val::Pair(_, b) = self.get(p)
+        {
+            return b;
+        }
         self.alloc(Val::Snd(p))
     }
     pub fn at(&mut self, p: ValId, d: Dim) -> ValId {
@@ -1126,6 +1244,45 @@ impl<'a> Engine<'a> {
             _ => Ok(None),
         }
     }
+    pub fn optimized_quote(&self) -> bool {
+        self.optimized
+    }
+    pub fn profile_snapshot(&self, bytes: usize) {
+        if let Some(p) = &self.profile {
+            let mut kinds = std::collections::BTreeMap::new();
+            for i in 0..self.values.len() {
+                let kind = match self.values.get(ValId::new(i)) {
+                    Val::Sub(..) => "Sub",
+                    Val::Susp(..) => "Susp",
+                    Val::Var(..) => "Var",
+                    Val::Com(..) => "Com",
+                    Val::Lam(..) | Val::Pi(..) | Val::Sigma(..) | Val::Path(..) | Val::PLam(..) => {
+                        "Binder"
+                    }
+                    _ => "Other",
+                };
+                *kinds.entry(kind).or_insert(0usize) += 1;
+            }
+            let mut sites: Vec<_> = p.sites.iter().collect();
+            sites.sort_by_key(|(_, n)| std::cmp::Reverse(**n));
+            sites.truncate(10);
+            let mut terms: Vec<_> = p.unfolds.iter().collect();
+            terms.sort_by_key(|(_, n)| std::cmp::Reverse(**n));
+            terms.truncate(10);
+            eprintln!(
+                "PROFILE bytes={bytes} steps={} values={} envs={} subs={} faces={} pushes={} collections={} reclaimed={} allocated_values={} kinds={kinds:?} sites={sites:?} source_offsets={terms:?}",
+                self.steps,
+                self.values.len(),
+                self.envs.len(),
+                self.subs.len(),
+                self.faces.len(),
+                p.pushes,
+                self.collections,
+                self.reclaimed_nodes,
+                self.allocated_values
+            );
+        }
+    }
     pub fn statistics(&self) -> Statistics {
         let payload = self.envs_payload() + self.values_payload() + self.subs_payload();
         Statistics {
@@ -1140,6 +1297,9 @@ impl<'a> Engine<'a> {
                 + self.faces.bytes()
                 + payload,
             cache_entries: self.cache.len(),
+            allocated_values: self.allocated_values,
+            collections: self.collections,
+            reclaimed_nodes: self.reclaimed_nodes,
         }
     }
     fn envs_payload(&self) -> usize {
@@ -1276,3 +1436,9 @@ mod substitution_face_regression {
         }
     }
 }
+
+#[path = "collect.rs"]
+mod collect;
+
+#[path = "support.rs"]
+mod support;

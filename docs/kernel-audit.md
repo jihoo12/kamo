@@ -5,7 +5,14 @@ This records the original source review and bounded adversarial test pass, not a
 proof of soundness or an independent external review. The original audit did not
 change kernel behavior. Remediation is recorded below.
 
-## Remediation status
+## Later quotation update — 2026-09-22
+
+The temporary 64-level quotation cap described below has been replaced by
+iterative quotation with explicit output/work budgets. See
+[full normalization measurements](normalization.md) for the current behavior
+and the still-incomplete full-univalence runs.
+
+## Remediation status (2026-09-21)
 
 Both findings have now been addressed:
 

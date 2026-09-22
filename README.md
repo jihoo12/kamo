@@ -128,7 +128,12 @@ some introduction forms still need annotations when reused as inference inputs.
 See [rule correspondence](docs/rules.md) for the theory, evaluator, and trusted
 implementation boundary.
 
-Quotation handles successor chains iteratively and limits other structural
-quotation to 64 recursive levels, returning a resource error for deeper output.
+Quotation uses an explicit work stack for all terms and face formulas, with no
+structural depth cap. `--max-output-bytes` bounds the UTF-8 output (default 16 MiB),
+and `--max-quote-tasks` bounds pending tasks (default 250,000). Every quotation
+task consumes the shared `--fuel` budget. Evaluation still has recursive code;
+iterative quotation does not establish stack safety of the whole evaluator.
+Failures report emitted bytes, pending tasks, and steps; partial output is not
+returned as a normal form. See [full normalization measurements](docs/normalization.md).
 See the [kernel audit and remediation](docs/kernel-audit.md) for the conversion
 and stack-exhaustion regressions.

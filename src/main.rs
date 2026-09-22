@@ -6,7 +6,7 @@ fn run() -> std::result::Result<(), String> {
     let mut args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
         println!(
-            "Kamo — experimental Cartesian cubical kernel\n\nUsage:\n  kamo check FILE [--fuel N] [--max-nodes N] [--reference]\n  kamo normalize FILE NAME [--fuel N] [--max-nodes N] [--reference] [--stats]\n\nDefault limits per declaration/evaluation: 1,000,000 steps; 250,000 arena nodes.\nFor a hard process limit, use scripts/with-limits.sh (512 MiB, 30 seconds)."
+            "Kamo — experimental Cartesian cubical kernel\n\nUsage:\n  kamo check FILE [--fuel N] [--max-nodes N] [--reference]\n  kamo normalize FILE NAME [--fuel N] [--max-nodes N] [--reference] [--stats]\n\nDefault limits per declaration/evaluation: 1,000,000 steps; 250,000 arena nodes.\nQuotation limits: --max-output-bytes N (default 16777216), --max-quote-tasks N (default 250000).\nQuotation and evaluation share --fuel.\nFor a hard process limit, use scripts/with-limits.sh (512 MiB, 30 seconds)."
         );
         return Ok(());
     }
@@ -15,6 +15,23 @@ fn run() -> std::result::Result<(), String> {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--max-output-bytes" | "--max-quote-tasks" => {
+                let flag = args[i].clone();
+                let value: usize = args
+                    .get(i + 1)
+                    .ok_or("quotation limit requires a positive integer")?
+                    .parse()
+                    .map_err(|_| "invalid quotation limit")?;
+                if value == 0 {
+                    return Err("quotation limit must be positive".into());
+                }
+                if flag == "--max-output-bytes" {
+                    options.max_output_bytes = value;
+                } else {
+                    options.max_quote_tasks = value;
+                }
+                args.drain(i..=i + 1);
+            }
             "--max-nodes" => {
                 if i + 1 >= args.len() {
                     return Err("--max-nodes requires a positive integer".into());

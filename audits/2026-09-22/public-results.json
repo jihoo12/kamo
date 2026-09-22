@@ -1,0 +1,154 @@
+[
+  {
+    "case": "false-path",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/false-path.kamo:1:35: checking bad: path endpoint does not match its declared boundary"
+  },
+  {
+    "case": "false-path",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/false-path.kamo:1:35: checking bad: path endpoint does not match its declared boundary"
+  },
+  {
+    "case": "universe-cycle",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/universe-cycle.kamo:1:16: checking bad: type mismatch (universe levels are explicit and non-cumulative)"
+  },
+  {
+    "case": "universe-cycle",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/universe-cycle.kamo:1:16: checking bad: type mismatch (universe levels are explicit and non-cumulative)"
+  },
+  {
+    "case": "false-cover",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/false-cover.kamo:1:42: checking bad: system faces do not cover the current face context"
+  },
+  {
+    "case": "false-cover",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/false-cover.kamo:1:42: checking bad: system faces do not cover the current face context"
+  },
+  {
+    "case": "bad-cap",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/bad-cap.kamo:1:42: checking bad: composition tube disagrees with its cap at the source"
+  },
+  {
+    "case": "bad-cap",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/bad-cap.kamo:1:42: checking bad: composition tube disagrees with its cap at the source"
+  },
+  {
+    "case": "bad-overlap",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/bad-overlap.kamo:1:45: checking bad: system branches disagree on an overlap"
+  },
+  {
+    "case": "bad-overlap",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/bad-overlap.kamo:1:45: checking bad: system branches disagree on an overlap"
+  },
+  {
+    "case": "self-reference",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/self-reference.kamo:1:15: unknown name 'bad'"
+  },
+  {
+    "case": "self-reference",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/self-reference.kamo:1:15: unknown name 'bad'"
+  },
+  {
+    "case": "bad-equivalence",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/bad-equivalence.kamo:1:38: checking bad: type mismatch (universe levels are explicit and non-cumulative)"
+  },
+  {
+    "case": "bad-equivalence",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/bad-equivalence.kamo:1:38: checking bad: type mismatch (universe levels are explicit and non-cumulative)"
+  },
+  {
+    "case": "diagonal-overlap",
+    "reference": false,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/diagonal-overlap.kamo:1:133: checking bad: composition tube disagrees with its cap at the source"
+  },
+  {
+    "case": "diagonal-overlap",
+    "reference": true,
+    "result": "rejected",
+    "diagnostic": "/tmp/kamo-public-audit-1bffijhd/diagonal-overlap.kamo:1:133: checking bad: composition tube disagrees with its cap at the source"
+  },
+  {
+    "case": "open-coe",
+    "reference": false,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(lam x0 (lam x1 (com i0 (at x0 i0) 0 1 x1 ())))"
+  },
+  {
+    "case": "open-coe",
+    "reference": true,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(lam x0 (lam x1 (com i0 (at x0 i0) 0 1 x1 ())))"
+  },
+  {
+    "case": "open-pair",
+    "reference": false,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(lam x0 (lam x1 (pair (com i0 (at x0 i0) 0 1 x1 ()) (com i0 (at x0 i0) 0 1 x1 ()))))"
+  },
+  {
+    "case": "open-pair",
+    "reference": true,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(lam x0 (lam x1 (pair (com i0 (at x0 i0) 0 1 x1 ()) (com i0 (at x0 i0) 0 1 x1 ()))))"
+  },
+  {
+    "case": "open-function",
+    "reference": false,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(lam x0 (lam x1 (lam x2 (com i0 (at x0 i0) 0 1 (app x1 (com i0 (at x0 i0) 1 0 x2 ())) ()))))"
+  },
+  {
+    "case": "open-function",
+    "reference": true,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(lam x0 (lam x1 (lam x2 (com i0 (at x0 i0) 0 1 (app x1 (com i0 (at x0 i0) 1 0 x2 ())) ()))))"
+  },
+  {
+    "case": "restricted-computed-glue",
+    "reference": false,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(path i0 true)"
+  },
+  {
+    "case": "restricted-computed-glue",
+    "reference": true,
+    "result": "normalized, rechecked, and definitionally equal",
+    "normal": "(path i0 true)"
+  },
+  {
+    "case": "deep-natural",
+    "source_bytes": 877802,
+    "declarations": 30001,
+    "check": "accepted",
+    "normalization_exit": 0,
+    "stderr": ""
+  }
+]

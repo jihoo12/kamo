@@ -13,7 +13,7 @@ pub(crate) enum Dim {
     Var(u32),
 }
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum Face {
+pub(crate) enum Face {
     Top,
     Bot,
     Eq(Dim, Dim),
@@ -28,6 +28,9 @@ pub(crate) struct Faces {
 }
 type Clause = Vec<(Dim, Dim)>;
 impl Faces {
+    pub(crate) fn get(&self, f: FaceId) -> Face {
+        self.nodes.get(f).clone()
+    }
     fn node(&mut self, f: Face) -> FaceId {
         if let Some(id) = self.intern.get(&f) {
             return *id;
@@ -236,28 +239,6 @@ impl Faces {
         }
         dims.into_iter().collect()
     }
-    pub fn display(&self, f: FaceId, dims: &[u32]) -> String {
-        fn d(x: Dim, ds: &[u32]) -> String {
-            match x {
-                Dim::Zero => "0".into(),
-                Dim::One => "1".into(),
-                Dim::Var(v) => {
-                    format!("i{}", ds.iter().position(|x| *x == v).unwrap_or(v as usize))
-                }
-            }
-        }
-        match self.nodes.get(f) {
-            Face::Top => "top".into(),
-            Face::Bot => "bottom".into(),
-            Face::Eq(a, b) => format!("(= {} {})", d(*a, dims), d(*b, dims)),
-            Face::And(a, b) => format!(
-                "(and {} {})",
-                self.display(*a, dims),
-                self.display(*b, dims)
-            ),
-            Face::Or(a, b) => format!("(or {} {})", self.display(*a, dims), self.display(*b, dims)),
-        }
-    }
     pub fn bytes(&self) -> usize {
         self.nodes.bytes()
     }
@@ -347,5 +328,56 @@ mod tests {
         }
         let top = f.top();
         assert!(f.entails(top, face).unwrap_err().message.contains("budget"));
+    }
+}
+
+impl Faces {
+    /// Compact only between evaluator commands with an explicit complete root set.
+    pub(crate) fn compact(&mut self, roots: &mut [FaceId]) -> Vec<usize> {
+        use crate::arena::Key;
+        let mut live = vec![false; self.nodes.len()];
+        let mut work = roots.to_vec();
+        while let Some(f) = work.pop() {
+            if std::mem::replace(&mut live[f.index()], true) {
+                continue;
+            }
+            if let Face::And(a, b) | Face::Or(a, b) = self.nodes.get(f) {
+                work.extend([*a, *b]);
+            }
+        }
+        let mut count = 0;
+        let map: Vec<_> = live
+            .iter()
+            .map(|yes| {
+                if *yes {
+                    let i = count;
+                    count += 1;
+                    i
+                } else {
+                    usize::MAX
+                }
+            })
+            .collect();
+        let id = |f: FaceId| FaceId::new(map[f.index()]);
+        let mut nodes = Arena::default();
+        let mut intern = HashMap::default();
+        for (i, yes) in live.iter().enumerate() {
+            if *yes {
+                let f = match self.nodes.get(FaceId::new(i)) {
+                    Face::And(a, b) => Face::And(id(*a), id(*b)),
+                    Face::Or(a, b) => Face::Or(id(*a), id(*b)),
+                    f => f.clone(),
+                };
+                let key = nodes.alloc(f.clone());
+                intern.insert(f, key);
+            }
+        }
+        for root in roots {
+            *root = id(*root);
+        }
+        self.nodes = nodes;
+        self.intern = intern;
+        self.dnf_cache.borrow_mut().clear();
+        map
     }
 }

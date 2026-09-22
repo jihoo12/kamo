@@ -2,6 +2,7 @@
 //! Experimental Cartesian cubical kernel with checked univalence library terms.
 //! See README.md and docs/rules.md for the implemented rules and limitations.
 mod arena;
+mod capture;
 mod check;
 mod eval;
 mod face;
@@ -62,6 +63,11 @@ pub struct Options {
     pub fuel: u64,
     pub optimized: bool,
     pub max_nodes: usize,
+    /// Maximum UTF-8 bytes in the materialized normal form (default 16 MiB).
+    pub max_output_bytes: usize,
+    /// Maximum pending tasks on the iterative quotation stack.
+    /// Quotation also consumes the shared fuel budget.
+    pub max_quote_tasks: usize,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -69,6 +75,8 @@ impl Default for Options {
             fuel: 1_000_000,
             optimized: true,
             max_nodes: 250_000,
+            max_output_bytes: 16 * 1024 * 1024,
+            max_quote_tasks: 250_000,
         }
     }
 }
@@ -80,10 +88,14 @@ pub struct Statistics {
     pub environment_nodes: usize,
     pub substitution_nodes: usize,
     pub face_nodes: usize,
-    /// Peak retained arena capacities, including Vec payloads. Excludes hash maps,
+    /// Currently retained arena capacities, including Vec payloads. Excludes hash maps,
     /// allocator metadata, syntax, stack, and temporary face-solver allocations.
     pub arena_bytes: usize,
     pub cache_entries: usize,
+    /// Fresh value nodes allocated over the entire session, excluding GC copies.
+    pub allocated_values: usize,
+    pub collections: usize,
+    pub reclaimed_nodes: usize,
 }
 #[derive(Debug)]
 pub struct NormalForm {
@@ -135,7 +147,13 @@ impl CheckedProgram {
         let face = engine.faces.top();
         let ty = engine.thunk(decl.ty, env);
         let body = engine.thunk(decl.body, env);
-        let text = engine.quote(body, ty, face)?;
+        let text = engine.quote(
+            body,
+            ty,
+            face,
+            options.max_output_bytes,
+            options.max_quote_tasks,
+        )?;
         Ok(NormalForm {
             text,
             statistics: engine.statistics(),

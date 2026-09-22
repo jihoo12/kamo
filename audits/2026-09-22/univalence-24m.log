@@ -1,0 +1,3 @@
+examples/univalence.kamo: arena node budget exhausted; computation stopped before further evaluation (during quotation: 3614127 bytes emitted, 217 pending tasks, 13769260 steps)
+Command exited with non-zero status 1
+elapsed=12.47 rss_KiB=6347452 exit=1
