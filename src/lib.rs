@@ -8,7 +8,9 @@ mod eval;
 mod face;
 mod glue;
 mod hash;
+mod normal_dag;
 mod quote;
+pub use normal_dag::NormalDag;
 mod syntax;
 
 use std::fmt;
@@ -95,6 +97,8 @@ pub struct Statistics {
     /// Fresh value nodes allocated over the entire session, excluding GC copies.
     pub allocated_values: usize,
     pub collections: usize,
+    /// Maximum logical arena nodes alive at once; excludes temporary copies during collection.
+    pub peak_arena_nodes: usize,
     pub reclaimed_nodes: usize,
 }
 #[derive(Debug)]
@@ -158,6 +162,38 @@ impl CheckedProgram {
             text,
             statistics: engine.statistics(),
         })
+    }
+    /// Fully reduce into an owned shared text graph. The output budget bounds
+    /// graph storage, rather than its (possibly much larger) expanded text.
+    pub fn normalize_dag_with(
+        &self,
+        name: &str,
+        options: Options,
+    ) -> Result<(NormalDag, Statistics)> {
+        let decl = self
+            .program
+            .decls
+            .iter()
+            .find(|d| d.name == name)
+            .ok_or_else(|| Error::plain(format!("unknown declaration '{name}'")))?;
+        let mut engine = eval::Engine::new(
+            &self.program,
+            options.optimized,
+            options.fuel,
+            options.max_nodes,
+        );
+        let env = engine.env(eval::Env::default());
+        let face = engine.faces.top();
+        let ty = engine.thunk(decl.ty, env);
+        let body = engine.thunk(decl.body, env);
+        let dag = engine.quote_dag(
+            body,
+            ty,
+            face,
+            options.max_output_bytes,
+            options.max_quote_tasks,
+        )?;
+        Ok((dag, engine.statistics()))
     }
     /// Measures semantic conversion of two checked definitions, without parsing,
     /// checking, quotation, or output inside the timed section.

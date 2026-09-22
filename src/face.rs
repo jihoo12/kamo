@@ -193,6 +193,34 @@ impl Faces {
             })
             .collect())
     }
+    /// Existentially forget dimensions outside `keep`, preserving every equality
+    /// among retained dimensions and distinct endpoints (not Boolean sampling).
+    pub(crate) fn project(
+        &mut self,
+        f: FaceId,
+        keep: &std::collections::BTreeSet<u32>,
+    ) -> Result<FaceId> {
+        let mut out = self.bot();
+        for clause in self.dnf(f)? {
+            let partition = Partition::new(&clause);
+            let mut representatives = BTreeMap::new();
+            let mut projected = self.top();
+            for d in [Dim::Zero, Dim::One]
+                .into_iter()
+                .chain(keep.iter().copied().map(Dim::Var))
+            {
+                let root = partition.root(d);
+                if let Some(previous) = representatives.get(&root) {
+                    let eq = self.eq(d, *previous);
+                    projected = self.and(projected, eq);
+                } else {
+                    representatives.insert(root, d);
+                }
+            }
+            out = self.or(out, projected);
+        }
+        Ok(out)
+    }
     pub fn forall(&mut self, var: u32, f: FaceId) -> Result<FaceId> {
         // A generic fresh dimension witnesses failure of every nontrivial
         // equality involving the quantified variable. This is not endpoint sampling.
@@ -270,9 +298,87 @@ impl Partition {
     }
 }
 
+impl Faces {
+    /// Compact only between evaluator commands with an explicit complete root set.
+    pub(crate) fn compact(&mut self, roots: &mut [FaceId]) -> Vec<usize> {
+        use crate::arena::Key;
+        let mut live = vec![false; self.nodes.len()];
+        let mut work = roots.to_vec();
+        while let Some(f) = work.pop() {
+            if std::mem::replace(&mut live[f.index()], true) {
+                continue;
+            }
+            if let Face::And(a, b) | Face::Or(a, b) = self.nodes.get(f) {
+                work.extend([*a, *b]);
+            }
+        }
+        let mut count = 0;
+        let map: Vec<_> = live
+            .iter()
+            .map(|yes| {
+                if *yes {
+                    let i = count;
+                    count += 1;
+                    i
+                } else {
+                    usize::MAX
+                }
+            })
+            .collect();
+        let id = |f: FaceId| FaceId::new(map[f.index()]);
+        let mut nodes = Arena::default();
+        let mut intern = HashMap::default();
+        for (i, yes) in live.iter().enumerate() {
+            if *yes {
+                let f = match self.nodes.get(FaceId::new(i)) {
+                    Face::And(a, b) => Face::And(id(*a), id(*b)),
+                    Face::Or(a, b) => Face::Or(id(*a), id(*b)),
+                    f => f.clone(),
+                };
+                let key = nodes.alloc(f.clone());
+                intern.insert(f, key);
+            }
+        }
+        for root in roots {
+            *root = id(*root);
+        }
+        self.nodes = nodes;
+        self.intern = intern;
+        self.dnf_cache.borrow_mut().clear();
+        map
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn projection_preserves_transitive_equalities_without_booleanizing() {
+        let mut f = Faces::default();
+        let i = Dim::Var(0);
+        let j = Dim::Var(1);
+        let ij = f.eq(i, j);
+        let i0 = f.eq(i, Dim::Zero);
+        let j0 = f.eq(j, Dim::Zero);
+        let under = f.and(ij, i0);
+        let projected = f
+            .project(under, &std::collections::BTreeSet::from([1]))
+            .unwrap();
+        assert!(f.entails(projected, j0).unwrap());
+        assert!(f.entails(j0, projected).unwrap());
+        let projected = f
+            .project(ij, &std::collections::BTreeSet::from([1]))
+            .unwrap();
+        let top = f.top();
+        assert!(f.entails(top, projected).unwrap());
+        let i1 = f.eq(i, Dim::One);
+        let endpoints = f.or(i0, i1);
+        let retained = f
+            .project(endpoints, &std::collections::BTreeSet::from([0]))
+            .unwrap();
+        assert!(!f.entails(top, retained).unwrap());
+    }
+
     #[test]
     fn interval_is_not_boolean() {
         let mut f = Faces::default();
@@ -328,56 +434,5 @@ mod tests {
         }
         let top = f.top();
         assert!(f.entails(top, face).unwrap_err().message.contains("budget"));
-    }
-}
-
-impl Faces {
-    /// Compact only between evaluator commands with an explicit complete root set.
-    pub(crate) fn compact(&mut self, roots: &mut [FaceId]) -> Vec<usize> {
-        use crate::arena::Key;
-        let mut live = vec![false; self.nodes.len()];
-        let mut work = roots.to_vec();
-        while let Some(f) = work.pop() {
-            if std::mem::replace(&mut live[f.index()], true) {
-                continue;
-            }
-            if let Face::And(a, b) | Face::Or(a, b) = self.nodes.get(f) {
-                work.extend([*a, *b]);
-            }
-        }
-        let mut count = 0;
-        let map: Vec<_> = live
-            .iter()
-            .map(|yes| {
-                if *yes {
-                    let i = count;
-                    count += 1;
-                    i
-                } else {
-                    usize::MAX
-                }
-            })
-            .collect();
-        let id = |f: FaceId| FaceId::new(map[f.index()]);
-        let mut nodes = Arena::default();
-        let mut intern = HashMap::default();
-        for (i, yes) in live.iter().enumerate() {
-            if *yes {
-                let f = match self.nodes.get(FaceId::new(i)) {
-                    Face::And(a, b) => Face::And(id(*a), id(*b)),
-                    Face::Or(a, b) => Face::Or(id(*a), id(*b)),
-                    f => f.clone(),
-                };
-                let key = nodes.alloc(f.clone());
-                intern.insert(f, key);
-            }
-        }
-        for root in roots {
-            *root = id(*root);
-        }
-        self.nodes = nodes;
-        self.intern = intern;
-        self.dnf_cache.borrow_mut().clear();
-        map
     }
 }

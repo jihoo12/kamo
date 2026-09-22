@@ -72,9 +72,17 @@ struct Profile {
 }
 pub(crate) struct Engine<'a> {
     profile: Option<Profile>,
+    #[cfg(test)]
+    pub(crate) last_quote_prefix: String,
+    pub(crate) fiber_cache: HashMap<(ValId, ValId, ValId, ValId), ValId>,
+    pub(crate) equiv_cache: HashMap<(ValId, ValId), ValId>,
+    pub(crate) isequiv_cache: HashMap<(ValId, ValId, ValId), ValId>,
+    pub(crate) contr_cache: HashMap<ValId, ValId>,
+    pub(crate) identity_cache: HashMap<ValId, ValId>,
     support_cache: HashMap<ValId, Option<support::Support>>,
     computing_support: bool,
     pub collections: usize,
+    pub peak_arena_nodes: usize,
     collection_at: usize,
     pub reclaimed_nodes: usize,
     pub allocated_values: usize,
@@ -102,9 +110,17 @@ pub(crate) struct Engine<'a> {
 impl<'a> Engine<'a> {
     pub fn new(program: &'a Program, optimized: bool, fuel: u64, max_nodes: usize) -> Self {
         Self {
+            #[cfg(test)]
+            last_quote_prefix: String::new(),
+            fiber_cache: HashMap::default(),
+            equiv_cache: HashMap::default(),
+            isequiv_cache: HashMap::default(),
+            contr_cache: HashMap::default(),
+            identity_cache: HashMap::default(),
             support_cache: HashMap::default(),
             computing_support: false,
             collections: 0,
+            peak_arena_nodes: 0,
             collection_at: (max_nodes / 2).clamp(1, 250_000),
             reclaimed_nodes: 0,
             allocated_values: 0,
@@ -131,7 +147,13 @@ impl<'a> Engine<'a> {
             unfold_cache: HashMap::default(),
         }
     }
+    pub fn observe_arena_peak(&mut self) {
+        self.peak_arena_nodes = self
+            .peak_arena_nodes
+            .max(self.values.len() + self.envs.len() + self.subs.len() + self.faces.len());
+    }
     pub fn tick(&mut self) -> Result<()> {
+        self.observe_arena_peak();
         if self.values.len() + self.envs.len() + self.subs.len() + self.faces.len() > self.max_nodes
         {
             return Err(Error::plain(
@@ -424,6 +446,12 @@ impl<'a> Engine<'a> {
         })
     }
     fn sub_binder(&mut self, b: Binder, s: SubId, dim: bool) -> Binder {
+        if self.optimized && self.preserves_binder(s, b.var, dim) {
+            return Binder {
+                var: b.var,
+                body: self.sub(b.body, s),
+            };
+        }
         let var = if dim {
             self.fresh_dim()
         } else {
@@ -543,8 +571,12 @@ impl<'a> Engine<'a> {
             }
             Val::Unglue(g, v) => Val::Unglue(self.sub(g, s), self.sub(v, s)),
             Val::Com(c) => {
-                let dim = self.fresh_dim();
-                let inner = self.renamed(c.dim, dim, s, true);
+                let (dim, inner) = if self.optimized && self.preserves_binder(s, c.dim, true) {
+                    (c.dim, s)
+                } else {
+                    let dim = self.fresh_dim();
+                    (dim, self.renamed(c.dim, dim, s, true))
+                };
                 Val::Com(Composition {
                     dim,
                     family: self.sub(c.family, inner),
@@ -1299,6 +1331,9 @@ impl<'a> Engine<'a> {
             cache_entries: self.cache.len(),
             allocated_values: self.allocated_values,
             collections: self.collections,
+            peak_arena_nodes: self
+                .peak_arena_nodes
+                .max(self.values.len() + self.envs.len() + self.subs.len() + self.faces.len()),
             reclaimed_nodes: self.reclaimed_nodes,
         }
     }
@@ -1336,6 +1371,48 @@ impl<'a> Engine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn substitution_preserves_binders_only_without_capture() {
+        let program = Program::default();
+        let mut e = Engine::new(&program, true, 100_000, 100_000);
+        let bool_ty = e.alloc(Val::Bool);
+        let x = e.variable(bool_ty);
+        let y = e.variable(bool_ty);
+        let Val::Var(xl, _) = e.get(x) else {
+            unreachable!()
+        };
+        let Val::Var(yl, _) = e.get(y) else {
+            unreachable!()
+        };
+        let b = Binder { var: yl, body: x };
+        let capture = e.substitution(Sub {
+            terms: vec![(xl, y)],
+            ..Sub::default()
+        });
+        let changed = e.sub_binder(b.clone(), capture, false);
+        assert_ne!(changed.var, yl);
+        let face = e.faces.top();
+        assert_eq!(e.force(changed.body, face).unwrap(), y);
+        let t = e.alloc(Val::True);
+        let harmless = e.substitution(Sub {
+            terms: vec![(xl, t)],
+            ..Sub::default()
+        });
+        assert_eq!(e.sub_binder(b, harmless, false).var, yl);
+        let i = e.fresh_dim();
+        let j = e.fresh_dim();
+        let capture = e.substitution(Sub {
+            dims: vec![(i, Dim::Var(j))],
+            ..Sub::default()
+        });
+        assert!(!e.preserves_binder(capture, j, true));
+        let harmless = e.substitution(Sub {
+            dims: vec![(i, Dim::Zero)],
+            ..Sub::default()
+        });
+        assert!(e.preserves_binder(harmless, j, true));
+    }
+
     #[test]
     fn substitutions_compose_and_unblock_paths() {
         for optimized in [false, true] {
@@ -1442,3 +1519,40 @@ mod collect;
 
 #[path = "support.rs"]
 mod support;
+
+#[cfg(test)]
+mod compacted_univalence_regression {
+    use super::*;
+    #[test]
+    fn compacted_univalence_prefix_agrees_with_reference() {
+        let checked =
+            crate::CheckedProgram::check(include_str!("../examples/univalence.kamo")).unwrap();
+        let program = &checked.program;
+        let decl = program.decls.last().unwrap();
+        let mut prefixes = Vec::new();
+        for optimized in [false, true] {
+            let mut engine = Engine::new(
+                program,
+                optimized,
+                4_000_000,
+                if optimized { 4_000 } else { 1_000_000 },
+            );
+            let env = engine.env(Env::default());
+            let face = engine.faces.top();
+            let ty = engine.thunk(decl.ty, env);
+            let body = engine.thunk(decl.body, env);
+            let error = engine.quote(body, ty, face, 4096, 250_000).unwrap_err();
+            assert!(
+                error.message.contains("output byte budget"),
+                "optimized={optimized}: {error}"
+            );
+            if optimized {
+                assert!(engine.collections > 0);
+            }
+            assert!(engine.last_quote_prefix.len() > 2000);
+            prefixes.push(engine.last_quote_prefix);
+        }
+        let common = prefixes[0].len().min(prefixes[1].len());
+        assert_eq!(&prefixes[0][..common], &prefixes[1][..common]);
+    }
+}

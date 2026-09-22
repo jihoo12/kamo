@@ -6,7 +6,7 @@ fn run() -> std::result::Result<(), String> {
     let mut args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
         println!(
-            "Kamo — experimental Cartesian cubical kernel\n\nUsage:\n  kamo check FILE [--fuel N] [--max-nodes N] [--reference]\n  kamo normalize FILE NAME [--fuel N] [--max-nodes N] [--reference] [--stats]\n\nDefault limits per declaration/evaluation: 1,000,000 steps; 250,000 arena nodes.\nQuotation limits: --max-output-bytes N (default 16777216), --max-quote-tasks N (default 250000).\nQuotation and evaluation share --fuel.\nFor a hard process limit, use scripts/with-limits.sh (512 MiB, 30 seconds)."
+            "Kamo — experimental Cartesian cubical kernel\n\nUsage:\n  kamo check FILE [--fuel N] [--max-nodes N] [--reference]\n  kamo normalize FILE NAME [--fuel N] [--max-nodes N] [--reference] [--stats]\n\nDefault limits per declaration/evaluation: 1,000,000 steps; 250,000 arena nodes.\nQuotation limits: --max-output-bytes N (default 16777216), --max-quote-tasks N (default 250000).\nnormalize-dag FILE NAME fully reduces into an owned shared text grammar; its --max-output-bytes bounds graph storage.\nQuotation and evaluation share --fuel.\nFor a hard process limit, use scripts/with-limits.sh (512 MiB, 30 seconds)."
         );
         return Ok(());
     }
@@ -64,7 +64,10 @@ fn run() -> std::result::Result<(), String> {
         }
     }
     let valid = matches!(args.first().map(String::as_str), Some("check")) && args.len() == 2
-        || matches!(args.first().map(String::as_str), Some("normalize")) && args.len() == 3;
+        || matches!(
+            args.first().map(String::as_str),
+            Some("normalize" | "normalize-dag")
+        ) && args.len() == 3;
     if !valid {
         return Err("usage: kamo check FILE | kamo normalize FILE NAME (see --help)".into());
     }
@@ -79,6 +82,18 @@ fn run() -> std::result::Result<(), String> {
         CheckedProgram::check_with(&source, options).map_err(|e| e.render(file, &source))?;
     if args[0] == "check" {
         println!("checked {} declarations", program.names().count());
+    } else if args[0] == "normalize-dag" {
+        let (dag, statistics) = program
+            .normalize_dag_with(&args[2], options)
+            .map_err(|e| e.render(file, &source))?;
+        print!("{}", dag.encode());
+        if stats {
+            eprintln!(
+                "expanded_bytes={} shared_nodes={} {statistics:?}",
+                dag.expanded_bytes(),
+                dag.nodes()
+            );
+        }
     } else {
         let result = program
             .normalize_with(&args[2], options)

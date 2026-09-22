@@ -18,6 +18,92 @@ impl Support {
     }
 }
 impl Engine<'_> {
+    pub(crate) fn relevant_quote_face(
+        &mut self,
+        v: ValId,
+        ty: Option<ValId>,
+        face: FaceId,
+        terms: &mut [Option<u32>],
+        dims: &mut [Option<u32>],
+    ) -> Result<FaceId> {
+        self.computing_support = true;
+        let mut budget = 512;
+        let mut free = self.value_support(v, &mut budget, 0);
+        if let Some(ty) = ty {
+            free = free.and_then(|mut free| {
+                free.union(self.value_support(ty, &mut budget, 0)?);
+                Some(free)
+            });
+        }
+        self.computing_support = false;
+        match free {
+            Some(free) => {
+                for level in terms {
+                    if level.is_some_and(|x| !free.terms.contains(&x)) {
+                        *level = None;
+                    }
+                }
+                for level in dims {
+                    if level.is_some_and(|x| !free.dims.contains(&x)) {
+                        *level = None;
+                    }
+                }
+                self.faces.project(face, &free.dims)
+            }
+            None => Ok(face),
+        }
+    }
+
+    // Keeping a binder's existing level is safe only when every component of
+    // the substitution leaves it untouched and cannot capture it in an image.
+    pub(super) fn preserves_binder(&mut self, s: SubId, var: u32, dim: bool) -> bool {
+        if self.computing_support {
+            return false;
+        }
+        self.computing_support = true;
+        let mut work = vec![s];
+        let mut budget = 512;
+        let mut safe = true;
+        while let Some(s) = work.pop() {
+            if budget == 0 {
+                safe = false;
+                break;
+            }
+            budget -= 1;
+            let s = self.subs.get(s).clone();
+            if let Some((a, b)) = s.compose {
+                work.extend([a, b]);
+            }
+            if dim && s.dims.iter().any(|(x, d)| *x == var || *d == Dim::Var(var)) {
+                safe = false;
+                break;
+            }
+            for (x, image) in s.terms {
+                if !dim && x == var {
+                    safe = false;
+                    break;
+                }
+                let Some(free) = self.value_support(image, &mut budget, 0) else {
+                    safe = false;
+                    break;
+                };
+                if if dim {
+                    free.dims.contains(&var)
+                } else {
+                    free.terms.contains(&var)
+                } {
+                    safe = false;
+                    break;
+                }
+            }
+            if !safe {
+                break;
+            }
+        }
+        self.computing_support = false;
+        safe
+    }
+
     pub(super) fn irrelevant(&mut self, v: ValId, s: SubId) -> bool {
         self.computing_support = true;
         let support = self.value_support(v, &mut 512, 0);

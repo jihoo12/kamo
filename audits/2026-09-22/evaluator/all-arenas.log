@@ -1,0 +1,6 @@
+
+thread 'main' (5) panicked at src/collect.rs:24:49:
+index out of bounds: the len is 107014 but the index is 17592186050925
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Command exited with non-zero status 101
+time=231.13 rss=483804 exit=101

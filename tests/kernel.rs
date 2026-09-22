@@ -585,3 +585,34 @@ fn compacted_glue_and_capture_trimming_match_reference() {
         assert_eq!(compact.text, reference.text, "{name}");
     }
 }
+
+#[test]
+fn shared_normal_forms_materialize_exactly() {
+    let source = include_str!("../examples/univalence.kamo");
+    let checked = CheckedProgram::check(source).unwrap();
+    for name in [
+        "id-equiv",
+        "ua",
+        "bool-id-path",
+        "identity-transport",
+        "neg-equiv",
+    ] {
+        for optimized in [false, true] {
+            let options = Options {
+                optimized,
+                fuel: 4_000_000,
+                max_nodes: 1_000_000,
+                ..Options::default()
+            };
+            let flat = checked.normalize_with(name, options).unwrap();
+            let (dag, _) = checked.normalize_dag_with(name, options).unwrap();
+            assert_eq!(dag.expanded_bytes(), flat.text.len(), "{name}");
+            assert_eq!(
+                dag.materialize(flat.text.len()).unwrap(),
+                flat.text,
+                "{name}"
+            );
+            assert!(dag.materialize(flat.text.len() - 1).is_err());
+        }
+    }
+}

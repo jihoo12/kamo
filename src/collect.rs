@@ -14,6 +14,7 @@ impl Engine<'_> {
                 > self.collection_at
     }
     pub fn collect_quote(&mut self, roots: &mut [ValId], face_roots: &mut [FaceId]) {
+        self.observe_arena_peak();
         let mut vs = vec![false; self.values.len()];
         let mut es = vec![false; self.envs.len()];
         let mut ss = vec![false; self.subs.len()];
@@ -93,11 +94,6 @@ impl Engine<'_> {
                 _ => {}
             }
         }
-        for ((a, f, _), b) in &self.cache {
-            if vs[a.index()] && vs[b.index()] {
-                all_faces.push(*f);
-            }
-        }
         let fm = self.faces.compact(&mut all_faces);
         face_roots.copy_from_slice(&all_faces[..face_roots.len()]);
         let face_id = |f: FaceId| FaceId::new(fm[f.index()]);
@@ -119,9 +115,33 @@ impl Engine<'_> {
         let vm = numbering(&vs);
         let em = numbering(&es);
         let sm = numbering(&ss);
-        let v = |id: ValId| ValId::new(vm[id.index()]);
-        let e = |id: EnvId| EnvId::new(em[id.index()]);
-        let s = |id: SubId| SubId::new(sm[id.index()]);
+        let v = |id: ValId| {
+            let mapped = vm[id.index()];
+            assert_ne!(
+                mapped,
+                usize::MAX,
+                "unmarked value during collection: {id:?}"
+            );
+            ValId::new(mapped)
+        };
+        let e = |id: EnvId| {
+            let mapped = em[id.index()];
+            assert_ne!(
+                mapped,
+                usize::MAX,
+                "unmarked environment during collection: {id:?}"
+            );
+            EnvId::new(mapped)
+        };
+        let s = |id: SubId| {
+            let mapped = sm[id.index()];
+            assert_ne!(
+                mapped,
+                usize::MAX,
+                "unmarked substitution during collection: {id:?}"
+            );
+            SubId::new(mapped)
+        };
         let mut values = Arena::default();
         let mut envs = Arena::default();
         let mut subs = Arena::default();
@@ -208,7 +228,7 @@ impl Engine<'_> {
         self.cache = self
             .cache
             .iter()
-            .filter(|((a, _, _), b)| vs[a.index()] && vs[b.index()])
+            .filter(|((a, f, _), b)| vs[a.index()] && vs[b.index()] && fm[f.index()] != usize::MAX)
             .map(|((a, f, g), b)| ((v(*a), face_id(*f), *g), v(*b)))
             .collect();
         self.globals = self
@@ -235,10 +255,50 @@ impl Engine<'_> {
             .filter(|((_, a), b)| es[a.index()] && vs[b.index()])
             .map(|((t, a), b)| ((*t, e(*a)), v(*b)))
             .collect();
+
+        self.identity_cache = self
+            .identity_cache
+            .iter()
+            .filter(|(a, b)| vs[a.index()] && vs[b.index()])
+            .map(|(a, b)| (v(*a), v(*b)))
+            .collect();
+        self.contr_cache = self
+            .contr_cache
+            .iter()
+            .filter(|(a, b)| vs[a.index()] && vs[b.index()])
+            .map(|(a, b)| (v(*a), v(*b)))
+            .collect();
+        self.equiv_cache = self
+            .equiv_cache
+            .iter()
+            .filter(|((a, b), c)| vs[a.index()] && vs[b.index()] && vs[c.index()])
+            .map(|((a, b), c)| ((v(*a), v(*b)), v(*c)))
+            .collect();
+        self.isequiv_cache = self
+            .isequiv_cache
+            .iter()
+            .filter(|((a, b, c), d)| {
+                vs[a.index()] && vs[b.index()] && vs[c.index()] && vs[d.index()]
+            })
+            .map(|((a, b, c), d)| ((v(*a), v(*b), v(*c)), v(*d)))
+            .collect();
+        self.fiber_cache = self
+            .fiber_cache
+            .iter()
+            .filter(|((a, b, c, d), e)| {
+                vs[a.index()] && vs[b.index()] && vs[c.index()] && vs[d.index()] && vs[e.index()]
+            })
+            .map(|((a, b, c, d), e)| ((v(*a), v(*b), v(*c), v(*d)), v(*e)))
+            .collect();
         self.values = values;
         self.envs = envs;
         self.subs = subs;
-        self.support_cache.clear();
+        self.support_cache = self
+            .support_cache
+            .iter()
+            .filter(|(a, _)| vs[a.index()])
+            .map(|(a, support)| (v(*a), support.clone()))
+            .collect();
         self.value_intern.clear();
         self.env_intern.clear();
         self.sub_intern.clear();

@@ -1,6 +1,7 @@
 //! Iterative, type-directed quotation into one bounded output buffer.
 use crate::eval::{Engine, Val, ValId};
 use crate::face::{Dim, FaceId};
+use crate::normal_dag::{Buffer, Saved};
 use crate::{Error, Result};
 
 #[derive(Default)]
@@ -8,6 +9,16 @@ struct Names {
     terms: Vec<u32>,
     dims: Vec<u32>,
     dim_levels: Vec<u32>,
+    // A globally fresh level for each identical interpreted typing context.
+    // Unlike reusing a level by depth alone, different domains/faces never alias.
+    term_levels: Vec<TermLevel>,
+}
+struct TermLevel {
+    terms: Vec<u32>,
+    dims: Vec<u32>,
+    domain: ValId,
+    face: FaceId,
+    level: u32,
 }
 impl Names {
     fn dim(&self, d: Dim) -> Result<String> {
@@ -29,10 +40,11 @@ struct QuoteKey {
     v: ValId,
     ty: Option<ValId>,
     face: FaceId,
-    terms: Vec<u32>,
-    dims: Vec<u32>,
+    terms: Vec<Option<u32>>,
+    dims: Vec<Option<u32>>,
 }
 enum Work {
+    Seal(usize),
     Finish(QuoteKey, usize, usize),
     Quote(ValId, Option<ValId>, FaceId),
     Text(String),
@@ -54,13 +66,34 @@ impl Engine<'_> {
         max_output: usize,
         max_work: usize,
     ) -> Result<String> {
+        self.quote_buffer(v, ty, face, max_work, Buffer::new(false, max_output))
+            .map(Buffer::into_text)
+    }
+    pub fn quote_dag(
+        &mut self,
+        v: ValId,
+        ty: ValId,
+        face: FaceId,
+        max_output: usize,
+        max_work: usize,
+    ) -> Result<crate::NormalDag> {
+        self.quote_buffer(v, ty, face, max_work, Buffer::new(true, max_output))?
+            .into_dag()
+    }
+    fn quote_buffer(
+        &mut self,
+        v: ValId,
+        ty: ValId,
+        face: FaceId,
+        max_work: usize,
+        mut out: Buffer,
+    ) -> Result<Buffer> {
         use Work::*;
         let mut pending = vec![Quote(v, Some(ty), face)];
         let mut names = Names::default();
-        let mut out = String::new();
         let mut next_sample = 65536;
-        let mut memo = crate::hash::IdMap::<QuoteKey, (usize, usize)>::default();
-        let mut large_memo: Vec<(QuoteKey, usize, usize)> = Vec::new();
+        let mut memo = crate::hash::IdMap::<QuoteKey, Saved>::default();
+        let mut large_memo: Vec<(QuoteKey, Saved)> = Vec::new();
         let mut congruence_hits = 0usize;
         let mut memo_hits = 0usize;
         let mut memo_bytes = 0usize;
@@ -68,69 +101,123 @@ impl Engine<'_> {
             while !pending.is_empty() {
                 if self.should_collect() {
                     let mut roots = Vec::new();
-                    for w in &pending {
-                        if let Quote(v, t, _) = w {
-                            roots.push(*v);
-                            roots.extend(t);
-                        }
-                    }
                     let mut faces = Vec::new();
                     for w in &pending {
                         match w {
-                            Quote(_, _, f) | Face(f) => faces.push(*f),
+                            Quote(v, t, f)
+                            | Finish(
+                                QuoteKey {
+                                    v, ty: t, face: f, ..
+                                },
+                                _,
+                                _,
+                            ) => {
+                                roots.push(*v);
+                                roots.extend(t);
+                                faces.push(*f);
+                            }
+                            Face(f) => faces.push(*f),
                             _ => {}
                         }
                     }
+                    for (key, _) in &large_memo {
+                        roots.push(key.v);
+                        roots.extend(key.ty);
+                        faces.push(key.face);
+                    }
+                    for entry in &names.term_levels {
+                        roots.push(entry.domain);
+                        faces.push(entry.face);
+                    }
                     self.collect_quote(&mut roots, &mut faces);
+                    let mut roots = roots.into_iter();
                     let mut faces = faces.into_iter();
                     for w in &mut pending {
                         match w {
-                            Quote(_, _, f) | Face(f) => *f = faces.next().unwrap(),
+                            Quote(v, t, f)
+                            | Finish(
+                                QuoteKey {
+                                    v, ty: t, face: f, ..
+                                },
+                                _,
+                                _,
+                            ) => {
+                                *v = roots.next().unwrap();
+                                if let Some(t) = t {
+                                    *t = roots.next().unwrap();
+                                }
+                                *f = faces.next().unwrap();
+                            }
+                            Face(f) => *f = faces.next().unwrap(),
                             _ => {}
+                        }
+                        if let Finish(_, _, generation) = w {
+                            *generation = self.collections;
                         }
                     }
                     memo.clear();
-                    large_memo.clear();
-                    let mut roots = roots.into_iter();
-                    for w in &mut pending {
-                        if let Quote(v, t, _) = w {
-                            *v = roots.next().unwrap();
-                            if let Some(t) = t {
-                                *t = roots.next().unwrap();
-                            }
+                    for (key, saved) in &mut large_memo {
+                        key.v = roots.next().unwrap();
+                        if let Some(t) = &mut key.ty {
+                            *t = roots.next().unwrap();
                         }
+                        key.face = faces.next().unwrap();
+                        memo.insert(key.clone(), *saved);
+                    }
+                    for entry in &mut names.term_levels {
+                        entry.domain = roots.next().unwrap();
+                        entry.face = faces.next().unwrap();
                     }
                 }
                 let work = pending.pop().unwrap();
                 if out.len() >= next_sample {
                     self.profile_snapshot(out.len());
-                    next_sample += 65536;
+                    if std::env::var_os("KAMO_PROFILE").is_some() {
+                        eprintln!(
+                            "QUOTE_PROGRESS expanded_bytes={} shared_nodes={} pending={}",
+                            out.len(),
+                            out.nodes(),
+                            pending.len()
+                        );
+                    }
+                    next_sample = out.len().saturating_add(8 * 1024 * 1024);
                 }
                 self.tick()?;
                 let mut next = Vec::new();
                 match work {
+                    Seal(start) => {
+                        out.seal(start)?;
+                    }
                     Finish(key, start, generation) => {
+                        let saved = out.seal(start)?;
                         if generation == self.collections
                             && memo.len() < 16384
                             && out.len() - start >= 128
                         {
                             if out.len() - start >= 4096 {
-                                if large_memo.len() >= 64 {
-                                    large_memo.remove(0);
+                                if large_memo.len() >= 256 {
+                                    // Keep half the cache for the largest completed
+                                    // subterms; a stream of small tubes must not evict
+                                    // an expensive section/retraction wholesale.
+                                    let mut sizes: Vec<_> = large_memo
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, (_, saved))| (out.saved_len(*saved), i))
+                                        .collect();
+                                    sizes.sort_unstable();
+                                    let protected: std::collections::BTreeSet<_> =
+                                        sizes.iter().rev().take(128).map(|(_, i)| *i).collect();
+                                    let victim = (0..large_memo.len())
+                                        .find(|i| !protected.contains(i))
+                                        .unwrap();
+                                    large_memo.remove(victim);
                                 }
-                                large_memo.push((key.clone(), start, out.len()));
+                                large_memo.push((key.clone(), saved));
                             }
-                            memo.insert(key, (start, out.len()));
+                            memo.insert(key, saved);
                         }
                     }
-                    Text(s) => {
-                        if s.len() > max_output.saturating_sub(out.len()) {
-                            return Err(Error::plain("quotation output byte budget exhausted"));
-                        }
-                        out.try_reserve(s.len())
-                            .map_err(|_| Error::plain("quotation output allocation failed"))?;
-                        out.push_str(&s);
-                    }
+                    Text(s) => out.append(&s)?,
                     Term(x) => names.terms.push(x),
                     EndTerm => {
                         names.terms.pop();
@@ -161,6 +248,7 @@ impl Engine<'_> {
                         }
                     },
                     Quote(v, ty, face) => {
+                        let ty = ty.map(|t| self.force(t, face)).transpose()?;
                         let mut v = self.force(v, face)?;
                         if self.optimized_quote()
                             && let Val::Com(mut c) = self.get(v)
@@ -177,52 +265,70 @@ impl Engine<'_> {
                             c.dim = i;
                             v = self.alloc(Val::Com(c));
                         }
-                        let key = QuoteKey {
+                        let mut key = QuoteKey {
                             v,
                             ty,
                             face,
-                            terms: names.terms.clone(),
-                            dims: names.dims.clone(),
+                            terms: names.terms.iter().copied().map(Some).collect(),
+                            dims: names.dims.iter().copied().map(Some).collect(),
                         };
+                        if self.optimized_quote() {
+                            key.face = self.relevant_quote_face(
+                                v,
+                                ty,
+                                face,
+                                &mut key.terms,
+                                &mut key.dims,
+                            )?;
+                        }
+                        let key_face = key.face;
                         let mut found = memo.get(&key).copied();
                         if found.is_none()
                             && self.optimized_quote()
                             && matches!(self.get(v), Val::Com(_))
                         {
-                            for (old, start, end) in large_memo
+                            for (old, saved) in large_memo
                                 .iter()
                                 .rev()
-                                .filter(|(k, _, _)| {
+                                .filter(|(k, _)| {
                                     k.ty == ty
-                                        && k.face == face
-                                        && k.terms == names.terms
-                                        && k.dims == names.dims
+                                        && k.face == key_face
+                                        && k.terms == key.terms
+                                        && k.dims == key.dims
                                 })
-                                .take(4)
+                                .take(16)
                             {
-                                if self.same(v, old.v, face, 64)? {
-                                    found = Some((*start, *end));
+                                if self.same(v, old.v, key_face, 64)? {
+                                    found = Some(*saved);
                                     congruence_hits += 1;
                                     break;
                                 }
                             }
                         }
                         if self.optimized_quote()
-                            && let Some((start, end)) = found
+                            && let Some(saved) = found
                         {
-                            let len = end - start;
-                            if len > max_output.saturating_sub(out.len()) {
-                                return Err(Error::plain("quotation output byte budget exhausted"));
-                            }
-                            out.try_reserve(len)
-                                .map_err(|_| Error::plain("quotation output allocation failed"))?;
-                            out.extend_from_within(start..end);
+                            let len = out.saved_len(saved);
+                            out.replay(saved)?;
                             memo_hits += 1;
                             memo_bytes += len;
                         } else {
                             next = self.quote_work(v, ty, face, &mut names)?;
-                            if self.optimized_quote() {
+                            if self.optimized_quote()
+                                && !matches!(
+                                    self.get(v),
+                                    Val::Suc(_)
+                                        | Val::U(_)
+                                        | Val::Bool
+                                        | Val::Nat
+                                        | Val::True
+                                        | Val::False
+                                        | Val::Zero
+                                )
+                            {
                                 next.push(Finish(key, out.len(), self.collections));
+                            } else if out.shared() {
+                                next.push(Seal(out.len()));
                             }
                         }
                     }
@@ -237,18 +343,27 @@ impl Engine<'_> {
             }
             Ok(())
         })();
+        #[cfg(test)]
+        if result.is_err() {
+            self.last_quote_prefix = out.text().unwrap_or("").to_owned();
+        }
         self.profile_snapshot(out.len());
         if std::env::var_os("KAMO_PROFILE").is_some() {
             eprintln!(
-                "QUOTE congruence_hits={congruence_hits} memo_hits={memo_hits} memo_bytes={memo_bytes} bytes={}",
+                "QUOTE shared_nodes={} congruence_hits={congruence_hits} memo_hits={memo_hits} memo_bytes={memo_bytes} bytes={}",
+                out.nodes(),
                 out.len()
             );
         }
         if result.is_err()
             && let Some(path) = std::env::var_os("KAMO_PROFILE_PREFIX")
         {
-            std::fs::write(path, &out)
-                .map_err(|e| Error::plain(format!("cannot write diagnostic prefix: {e}")))?;
+            std::fs::write(
+                path,
+                out.text()
+                    .unwrap_or("shared output: incomplete; no materialized prefix"),
+            )
+            .map_err(|e| Error::plain(format!("cannot write diagnostic prefix: {e}")))?;
         }
         result.map_err(|mut e| {
             e.message = format!(
@@ -262,6 +377,35 @@ impl Engine<'_> {
             e
         })?;
         Ok(out)
+    }
+    fn quote_variable(&mut self, domain: ValId, face: FaceId, n: &mut Names) -> Result<ValId> {
+        if !self.optimized_quote() {
+            return Ok(self.variable(domain));
+        }
+        let domain = self.force(domain, face)?;
+        if let Some(entry) = n.term_levels.iter().rev().find(|entry| {
+            entry.domain == domain
+                && entry.face == face
+                && entry.terms == n.terms
+                && entry.dims == n.dims
+        }) {
+            return Ok(self.alloc(Val::Var(entry.level, Some(domain))));
+        }
+        let v = self.variable(domain);
+        let Val::Var(level, _) = self.get(v) else {
+            unreachable!()
+        };
+        if n.term_levels.len() == 1024 {
+            n.term_levels.remove(0);
+        }
+        n.term_levels.push(TermLevel {
+            terms: n.terms.clone(),
+            dims: n.dims.clone(),
+            domain,
+            face,
+            level,
+        });
+        Ok(v)
     }
     fn quote_dimension(&mut self, n: &mut Names) -> u32 {
         let depth = n.dims.len();
@@ -285,7 +429,7 @@ impl Engine<'_> {
             let ty = self.force(ty, face)?;
             match self.get(ty) {
                 Val::Pi(a, b) => {
-                    let x = self.variable(a);
+                    let x = self.quote_variable(a, face, n)?;
                     let Val::Var(level, _) = self.get(x) else {
                         unreachable!()
                     };
@@ -377,7 +521,7 @@ impl Engine<'_> {
                 } else {
                     "Sigma"
                 };
-                let x = self.variable(a);
+                let x = self.quote_variable(a, face, n)?;
                 let Val::Var(level, _) = self.get(x) else {
                     unreachable!()
                 };
@@ -435,7 +579,7 @@ impl Engine<'_> {
             Val::PApp(p, d) => vec![text("(at "), q(p, None), text(format!(" {})", n.dim(d)?))],
             Val::If(p, a, b, c) => {
                 let bt = self.alloc(Val::Bool);
-                let x = self.variable(bt);
+                let x = self.quote_variable(bt, face, n)?;
                 let Val::Var(level, _) = self.get(x) else {
                     unreachable!()
                 };
@@ -460,7 +604,7 @@ impl Engine<'_> {
             }
             Val::NatElim(p, z, s, k) => {
                 let nat = self.alloc(Val::Nat);
-                let x = self.variable(nat);
+                let x = self.quote_variable(nat, face, n)?;
                 let Val::Var(level, _) = self.get(x) else {
                     unreachable!()
                 };
@@ -593,5 +737,34 @@ impl Engine<'_> {
             }
             Val::Susp(..) | Val::Sub(..) => unreachable!("force removes suspension heads"),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn quoted_levels_share_only_identical_typed_contexts() {
+        let program = crate::syntax::Program::default();
+        let mut engine = Engine::new(&program, true, 100_000, 100_000);
+        let mut names = Names::default();
+        let face = engine.faces.top();
+        let b = engine.alloc(Val::Bool);
+        let nat = engine.alloc(Val::Nat);
+        let x = engine.quote_variable(b, face, &mut names).unwrap();
+        assert_eq!(engine.quote_variable(b, face, &mut names).unwrap(), x);
+        let Val::Var(xlevel, _) = engine.get(x) else { unreachable!() };
+        let y = engine.quote_variable(nat, face, &mut names).unwrap();
+        let Val::Var(ylevel, _) = engine.get(y) else { unreachable!() };
+        assert_ne!(xlevel, ylevel);
+        names.terms.push(xlevel);
+        let z = engine.quote_variable(b, face, &mut names).unwrap();
+        let Val::Var(zlevel, _) = engine.get(z) else { unreachable!() };
+        assert_ne!(xlevel, zlevel);
+        names.terms.pop();
+        let i = engine.fresh_dim();
+        let under = engine.faces.eq(crate::face::Dim::Var(i), crate::face::Dim::Zero);
+        assert_ne!(engine.quote_variable(b, under, &mut names).unwrap(), x);
+        assert_eq!(engine.quote_variable(b, face, &mut names).unwrap(), x);
     }
 }

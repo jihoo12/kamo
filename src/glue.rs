@@ -5,6 +5,18 @@ use crate::face::{Dim, FaceId};
 
 impl Engine<'_> {
     pub fn fiber(&mut self, a: ValId, b: ValId, f: ValId, y: ValId) -> ValId {
+        if self.optimized_quote()
+            && let Some(v) = self.fiber_cache.get(&(a, b, f, y))
+        {
+            return *v;
+        }
+        let v = self.fiber_uncached(a, b, f, y);
+        if self.optimized_quote() {
+            self.fiber_cache.insert((a, b, f, y), v);
+        }
+        v
+    }
+    fn fiber_uncached(&mut self, a: ValId, b: ValId, f: ValId, y: ValId) -> ValId {
         let x = self.fresh_term();
         let xv = self.alloc(Val::Var(x, Some(a)));
         let fx = self.app(f, xv);
@@ -13,6 +25,18 @@ impl Engine<'_> {
         self.alloc(Val::Sigma(a, Binder { var: x, body: path }))
     }
     pub fn contractible(&mut self, a: ValId) -> ValId {
+        if self.optimized_quote()
+            && let Some(v) = self.contr_cache.get(&a)
+        {
+            return *v;
+        }
+        let v = self.contractible_uncached(a);
+        if self.optimized_quote() {
+            self.contr_cache.insert(a, v);
+        }
+        v
+    }
+    fn contractible_uncached(&mut self, a: ValId) -> ValId {
         let x = self.fresh_term();
         let xv = self.alloc(Val::Var(x, Some(a)));
         let y = self.fresh_term();
@@ -23,6 +47,18 @@ impl Engine<'_> {
         self.alloc(Val::Sigma(a, Binder { var: x, body: all }))
     }
     pub fn is_equiv(&mut self, a: ValId, b: ValId, f: ValId) -> ValId {
+        if self.optimized_quote()
+            && let Some(v) = self.isequiv_cache.get(&(a, b, f))
+        {
+            return *v;
+        }
+        let v = self.is_equiv_uncached(a, b, f);
+        if self.optimized_quote() {
+            self.isequiv_cache.insert((a, b, f), v);
+        }
+        v
+    }
+    fn is_equiv_uncached(&mut self, a: ValId, b: ValId, f: ValId) -> ValId {
         let y = self.fresh_term();
         let yv = self.alloc(Val::Var(y, Some(b)));
         let fiber = self.fiber(a, b, f, yv);
@@ -36,6 +72,18 @@ impl Engine<'_> {
         ))
     }
     pub fn equiv_type(&mut self, a: ValId, b: ValId) -> ValId {
+        if self.optimized_quote()
+            && let Some(v) = self.equiv_cache.get(&(a, b))
+        {
+            return *v;
+        }
+        let v = self.equiv_type_uncached(a, b);
+        if self.optimized_quote() {
+            self.equiv_cache.insert((a, b), v);
+        }
+        v
+    }
+    fn equiv_type_uncached(&mut self, a: ValId, b: ValId) -> ValId {
         let x = self.fresh_term();
         let arrow = self.alloc(Val::Pi(a, Binder { var: x, body: b }));
         let f = self.fresh_term();
@@ -53,6 +101,18 @@ impl Engine<'_> {
     /// upper edge at y, left edge at y, and right edge at the input path.
     /// The same expansion is checked as an ordinary library term in prelude.kamo.
     pub fn identity_equiv(&mut self, a: ValId) -> ValId {
+        if self.optimized_quote()
+            && let Some(v) = self.identity_cache.get(&a)
+        {
+            return *v;
+        }
+        let v = self.identity_equiv_uncached(a);
+        if self.optimized_quote() {
+            self.identity_cache.insert(a, v);
+        }
+        v
+    }
+    fn identity_equiv_uncached(&mut self, a: ValId) -> ValId {
         let x = self.fresh_term();
         let xv = self.alloc(Val::Var(x, Some(a)));
         let identity = self.alloc(Val::Lam(Binder { var: x, body: xv }));
