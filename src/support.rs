@@ -27,7 +27,7 @@ impl Engine<'_> {
         dims: &mut [Option<u32>],
     ) -> Result<FaceId> {
         self.computing_support = true;
-        let mut budget = 512;
+        let mut budget = 4096;
         let mut free = self.value_support(v, &mut budget, 0);
         if let Some(ty) = ty {
             free = free.and_then(|mut free| {
@@ -62,7 +62,7 @@ impl Engine<'_> {
         }
         self.computing_support = true;
         let mut work = vec![s];
-        let mut budget = 512;
+        let mut budget = 4096;
         let mut safe = true;
         while let Some(s) = work.pop() {
             if budget == 0 {
@@ -106,7 +106,7 @@ impl Engine<'_> {
 
     pub(super) fn irrelevant(&mut self, v: ValId, s: SubId) -> bool {
         self.computing_support = true;
-        let support = self.value_support(v, &mut 512, 0);
+        let support = self.value_support(v, &mut 4096, 0);
         self.computing_support = false;
         support.is_some_and(|free| {
             free.terms.into_iter().all(|x| !self.maps_term(s, x))
@@ -133,7 +133,9 @@ impl Engine<'_> {
         }
         *budget -= 1;
         let result = self.support_inner(v, budget, depth + 1);
-        self.support_cache.insert(v, result.clone());
+        if result.is_some() {
+            self.support_cache.insert(v, result.clone());
+        }
         result
     }
     fn support_inner(&mut self, v: ValId, budget: &mut usize, depth: usize) -> Option<Support> {

@@ -1,4 +1,8 @@
-# Full normalization experiment — 2026-09-22
+# Initial full normalization experiment — 2026-09-22
+
+These are the pre-optimization measurements. See [the ongoing evaluator memory
+investigation](evaluator-memory.md) for compaction, sharing, and newer explicit
+full-theorem runs.
 
 Quotation now uses explicit tasks for every term constructor, type-directed eta
 expansion, face formula, and binder scope. It writes once into a bounded String;

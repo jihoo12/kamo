@@ -44,7 +44,8 @@ The library and CLI additionally enforce:
   declaration or normalization, configurable with `--fuel` and `--max-nodes`.
 - Bounded face-solver depth, intermediate expansion, clause size, and caching.
 - A fresh semantic arena for each checked declaration, discarded immediately
-  afterwards. Normalization also uses its own arena.
+  afterwards. Normalization also uses its own arena and compacts unreachable
+  semantic nodes between quotation tasks.
 
 A resource error is an **inconclusive check**, never a successful proof or a
 judgment that a mathematical statement is false. Node limits are work/storage
@@ -137,3 +138,9 @@ Failures report emitted bytes, pending tasks, and steps; partial output is not
 returned as a normal form. See [full normalization measurements](docs/normalization.md).
 See the [kernel audit and remediation](docs/kernel-audit.md) for the conversion
 and stack-exhaustion regressions.
+
+The [evaluator memory investigation](docs/evaluator-memory.md) records allocation
+profiles, compaction/sharing changes, and the still-incomplete full-univalence
+normalization runs. `normalize-dag FILE NAME` fully reduces into a shared text
+graph; `--max-output-bytes` then bounds shared storage. It reports exact expanded
+size only after the traversal succeeds.

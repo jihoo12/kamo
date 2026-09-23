@@ -712,6 +712,11 @@ impl<'a> Engine<'a> {
         self.alloc(val)
     }
     pub fn app(&mut self, f: ValId, a: ValId) -> ValId {
+        if self.optimized
+            && let Val::Lam(b) = self.get(f)
+        {
+            return self.inst(&b, a);
+        }
         self.alloc(Val::App(f, a))
     }
     pub fn fst(&mut self, p: ValId) -> ValId {
@@ -731,6 +736,11 @@ impl<'a> Engine<'a> {
         self.alloc(Val::Snd(p))
     }
     pub fn at(&mut self, p: ValId, d: Dim) -> ValId {
+        if self.optimized
+            && let Val::PLam(b) = self.get(p)
+        {
+            return self.inst_dim(&b, d);
+        }
         self.alloc(Val::PApp(p, d))
     }
     // Expose ordinary beta redexes without expanding Kan operations. This is
@@ -917,8 +927,16 @@ impl<'a> Engine<'a> {
             return Ok(*v);
         }
         let mut v = original;
+        let mut trail = Vec::new();
         loop {
             self.tick()?;
+            if self.optimized {
+                if let Some(head) = self.cache.get(&(v, face, preserve_glue)) {
+                    v = *head;
+                    break;
+                }
+                trail.push(v);
+            }
             let next = match self.get(v) {
                 Val::Susp(t, e) => Some(self.unfold(t, e)),
                 Val::Sub(a, s) => Some(self.push(a, s)),
@@ -1047,7 +1065,21 @@ impl<'a> Engine<'a> {
                         return Err(Error::plain("internal error: unglue needs a Glue type"));
                     }
                 }
-                Val::Com(c) => {
+                Val::Com(mut c) => {
+                    if self.optimized {
+                        let count = c.tubes.len();
+                        let mut live = Vec::with_capacity(count);
+                        for (f, tube) in c.tubes {
+                            let under = self.faces.and(face, f);
+                            if !self.faces.inconsistent(under)? {
+                                live.push((f, tube));
+                            }
+                        }
+                        c.tubes = live;
+                        if c.tubes.len() != count {
+                            v = self.alloc(Val::Com(c.clone()));
+                        }
+                    }
                     // An explicit unglue annotation needs the Glue data even
                     // when universe composition restricts to its cap or tube.
                     // Ordinary forcing still applies the boundary rule first.
@@ -1071,7 +1103,9 @@ impl<'a> Engine<'a> {
             }
         }
         if self.optimized {
-            self.cache.insert((original, face, preserve_glue), v);
+            for source in trail {
+                self.cache.insert((source, face, preserve_glue), v);
+            }
         }
         Ok(v)
     }
@@ -1411,6 +1445,40 @@ mod tests {
             ..Sub::default()
         });
         assert!(e.preserves_binder(harmless, j, true));
+    }
+
+    #[test]
+    fn pruned_compositions_do_not_poison_other_faces() {
+        let program = Program::default();
+        let mut e = Engine::new(&program, true, 100_000, 100_000);
+        let a = e.alloc(Val::Bool);
+        let cap = e.variable(a);
+        let i = e.fresh_dim();
+        let j = e.fresh_dim();
+        let top = e.faces.top();
+        let left = e.faces.eq(Dim::Var(i), Dim::Zero);
+        let right = e.faces.eq(Dim::Var(i), Dim::One);
+        let original = e.alloc(Val::Com(Composition {
+            dim: j,
+            family: a,
+            from: Dim::Zero,
+            to: Dim::One,
+            cap,
+            tubes: vec![(right, cap)],
+        }));
+        let under_left = e.force(original, left).unwrap();
+        let Val::Com(c) = e.get(under_left) else {
+            panic!("expected neutral composition")
+        };
+        assert!(c.tubes.is_empty());
+        let under_top = e.force(original, top).unwrap();
+        let Val::Com(c) = e.get(under_top) else {
+            panic!("expected neutral composition")
+        };
+        assert_eq!(c.tubes.len(), 1);
+        assert_eq!(e.force(original, right).unwrap(), cap);
+        let substituted = e.restrict(original, i, Dim::One);
+        assert_eq!(e.force(substituted, top).unwrap(), cap);
     }
 
     #[test]

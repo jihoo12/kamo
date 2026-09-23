@@ -103,6 +103,7 @@ impl Buffer {
     pub fn nodes(&self) -> usize {
         self.dag.nodes.len()
     }
+    #[cfg(test)]
     pub fn text(&self) -> Option<&str> {
         self.text.as_deref()
     }
@@ -193,6 +194,23 @@ impl Buffer {
             .checked_add(length)
             .ok_or_else(|| Error::plain("expanded normal form exceeds usize::MAX bytes"))?;
         Ok(())
+    }
+    pub fn write_diagnostic(&mut self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        let result = if let Some(text) = &self.text {
+            std::fs::write(path, text)
+        } else {
+            let Saved::Shared(root) = self.seal(0)? else {
+                unreachable!()
+            };
+            self.dag.root = root;
+            let encoded = self.dag.encode().replacen(
+                "kamo-normal-dag-v1",
+                "kamo-normal-dag-prefix-v1-INCOMPLETE",
+                1,
+            );
+            std::fs::write(path, encoded)
+        };
+        result.map_err(|e| Error::plain(format!("cannot write diagnostic prefix: {e}")))
     }
     pub fn into_text(self) -> String {
         self.text.unwrap()

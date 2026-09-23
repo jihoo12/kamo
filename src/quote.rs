@@ -174,10 +174,17 @@ impl Engine<'_> {
                     self.profile_snapshot(out.len());
                     if std::env::var_os("KAMO_PROFILE").is_some() {
                         eprintln!(
-                            "QUOTE_PROGRESS expanded_bytes={} shared_nodes={} pending={}",
+                            "QUOTE_PROGRESS expanded_bytes={} shared_nodes={} pending={} term_depth={} dim_depth={} largest_completed={}",
                             out.len(),
                             out.nodes(),
-                            pending.len()
+                            pending.len(),
+                            names.terms.len(),
+                            names.dims.len(),
+                            large_memo
+                                .iter()
+                                .map(|(_, saved)| out.saved_len(*saved))
+                                .max()
+                                .unwrap_or(0)
                         );
                     }
                     next_sample = out.len().saturating_add(8 * 1024 * 1024);
@@ -195,22 +202,8 @@ impl Engine<'_> {
                             && out.len() - start >= 128
                         {
                             if out.len() - start >= 4096 {
-                                if large_memo.len() >= 256 {
-                                    // Keep half the cache for the largest completed
-                                    // subterms; a stream of small tubes must not evict
-                                    // an expensive section/retraction wholesale.
-                                    let mut sizes: Vec<_> = large_memo
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, (_, saved))| (out.saved_len(*saved), i))
-                                        .collect();
-                                    sizes.sort_unstable();
-                                    let protected: std::collections::BTreeSet<_> =
-                                        sizes.iter().rev().take(128).map(|(_, i)| *i).collect();
-                                    let victim = (0..large_memo.len())
-                                        .find(|i| !protected.contains(i))
-                                        .unwrap();
-                                    large_memo.remove(victim);
+                                if large_memo.len() >= 1024 {
+                                    large_memo.remove(0);
                                 }
                                 large_memo.push((key.clone(), saved));
                             }
@@ -285,19 +278,40 @@ impl Engine<'_> {
                         let mut found = memo.get(&key).copied();
                         if found.is_none()
                             && self.optimized_quote()
-                            && matches!(self.get(v), Val::Com(_))
+                            && matches!(
+                                self.get(v),
+                                Val::Com(_)
+                                    | Val::Lam(_)
+                                    | Val::PLam(_)
+                                    | Val::Pair(..)
+                                    | Val::GlueIntro(..)
+                                    | Val::Pi(..)
+                                    | Val::Sigma(..)
+                                    | Val::Path(..)
+                                    | Val::Glue(..)
+                                    | Val::System(..)
+                            )
                         {
+                            let tag = std::mem::discriminant(&self.get(v));
                             for (old, saved) in large_memo
                                 .iter()
                                 .rev()
                                 .filter(|(k, _)| {
-                                    k.ty == ty
+                                    k.ty.is_some() == ty.is_some()
                                         && k.face == key_face
                                         && k.terms == key.terms
                                         && k.dims == key.dims
                                 })
                                 .take(16)
                             {
+                                if std::mem::discriminant(&self.get(old.v)) != tag {
+                                    continue;
+                                }
+                                if let (Some(a), Some(b)) = (ty, old.ty)
+                                    && !self.same(a, b, key_face, 64)?
+                                {
+                                    continue;
+                                }
                                 if self.same(v, old.v, key_face, 64)? {
                                     found = Some(*saved);
                                     congruence_hits += 1;
@@ -358,12 +372,7 @@ impl Engine<'_> {
         if result.is_err()
             && let Some(path) = std::env::var_os("KAMO_PROFILE_PREFIX")
         {
-            std::fs::write(
-                path,
-                out.text()
-                    .unwrap_or("shared output: incomplete; no materialized prefix"),
-            )
-            .map_err(|e| Error::plain(format!("cannot write diagnostic prefix: {e}")))?;
+            out.write_diagnostic(path)?;
         }
         result.map_err(|mut e| {
             e.message = format!(
@@ -753,17 +762,25 @@ mod tests {
         let nat = engine.alloc(Val::Nat);
         let x = engine.quote_variable(b, face, &mut names).unwrap();
         assert_eq!(engine.quote_variable(b, face, &mut names).unwrap(), x);
-        let Val::Var(xlevel, _) = engine.get(x) else { unreachable!() };
+        let Val::Var(xlevel, _) = engine.get(x) else {
+            unreachable!()
+        };
         let y = engine.quote_variable(nat, face, &mut names).unwrap();
-        let Val::Var(ylevel, _) = engine.get(y) else { unreachable!() };
+        let Val::Var(ylevel, _) = engine.get(y) else {
+            unreachable!()
+        };
         assert_ne!(xlevel, ylevel);
         names.terms.push(xlevel);
         let z = engine.quote_variable(b, face, &mut names).unwrap();
-        let Val::Var(zlevel, _) = engine.get(z) else { unreachable!() };
+        let Val::Var(zlevel, _) = engine.get(z) else {
+            unreachable!()
+        };
         assert_ne!(xlevel, zlevel);
         names.terms.pop();
         let i = engine.fresh_dim();
-        let under = engine.faces.eq(crate::face::Dim::Var(i), crate::face::Dim::Zero);
+        let under = engine
+            .faces
+            .eq(crate::face::Dim::Var(i), crate::face::Dim::Zero);
         assert_ne!(engine.quote_variable(b, under, &mut names).unwrap(), x);
         assert_eq!(engine.quote_variable(b, face, &mut names).unwrap(), x);
     }

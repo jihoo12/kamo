@@ -80,7 +80,10 @@ Reduction caches are keyed by value, face context, and whether the caller needs
 the underlying Glue data. Glue composition retains its exposed type data:
 re-evaluating the original type after substitution could otherwise lose that
 data by reducing to a boundary type. Caches and semantic arenas are discarded
-between declarations and between normalization calls.
+between declarations and between normalization calls. Optimized quotation also
+compacts all semantic arenas at explicit task boundaries, remapping every live
+root and dropping weak cache entries. See [memory and sharing](evaluator-memory.md)
+for cache-context invariants and current full-normalization evidence.
 
 Face nodes are shared. Entailment compares normalized disjunctions of equality
 partitions, checking transitivity and the inconsistency of `0 = 1`. A generic
