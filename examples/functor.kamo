@@ -1,0 +1,217 @@
+; Small-set-valued covariant functors for Yoneda.
+; Prepend foundations.kamo and category.kamo, in that order.
+; Functor laws are pointwise paths. All arguments, including C, are explicit.
+
+; Field order: object values, set proofs, arrow action, identity law, composition law.
+(def SetFunctor
+  (Pi C Category (U 1))
+  (lam C
+    (Sigma values (Pi a (app cat-objects C) (U 0))
+      (Sigma value-sets (Pi a (app cat-objects C) (app isSet (app values a)))
+        (Sigma map
+          (Pi a (app cat-objects C)
+            (Pi b (app cat-objects C)
+              (Pi f (app (app (app cat-hom C) a) b) (Pi x (app values a) (app values b)))))
+          (Sigma map-id
+            (Pi a (app cat-objects C)
+              (Pi x (app values a)
+                (Path i (app values a) (app (app (app (app map a) a) (app (app cat-id C) a)) x) x)))
+            (Pi a (app cat-objects C)
+              (Pi b (app cat-objects C)
+                (Pi c (app cat-objects C)
+                  (Pi f (app (app (app cat-hom C) a) b)
+                    (Pi g (app (app (app cat-hom C) b) c)
+                      (Pi x (app values a)
+                        (Path
+                          i
+                          (app values c)
+                          (app
+                            (app
+                              (app (app map a) c)
+                              (app (app (app (app (app (app cat-compose C) a) b) c) f) g))
+                            x)
+                          (app (app (app (app map b) c) g) (app (app (app (app map a) b) f) x)))))))))))))))
+
+(def functor-objects
+  (Pi C Category (Pi F (app SetFunctor C) (Pi a (app cat-objects C) (U 0))))
+  (lam C (lam F (fst F))))
+
+(def functor-sets
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi a (app cat-objects C) (app isSet (app (app (app functor-objects C) F) a)))))
+  (lam C (lam F (fst (snd F)))))
+
+(def functor-map
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi a (app cat-objects C)
+        (Pi b (app cat-objects C)
+          (Pi f (app (app (app cat-hom C) a) b)
+            (Pi x (app (app (app functor-objects C) F) a) (app (app (app functor-objects C) F) b)))))))
+  (lam C (lam F (fst (snd (snd F))))))
+
+(def functor-id
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi a (app cat-objects C)
+        (Pi x (app (app (app functor-objects C) F) a)
+          (Path
+            i
+            (app (app (app functor-objects C) F) a)
+            (app (app (app (app (app (app functor-map C) F) a) a) (app (app cat-id C) a)) x)
+            x)))))
+  (lam C (lam F (fst (snd (snd (snd F)))))))
+
+(def functor-compose
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi a (app cat-objects C)
+        (Pi b (app cat-objects C)
+          (Pi c (app cat-objects C)
+            (Pi f (app (app (app cat-hom C) a) b)
+              (Pi g (app (app (app cat-hom C) b) c)
+                (Pi x (app (app (app functor-objects C) F) a)
+                  (Path
+                    i
+                    (app (app (app functor-objects C) F) c)
+                    (app
+                      (app
+                        (app (app (app (app functor-map C) F) a) c)
+                        (app (app (app (app (app (app cat-compose C) a) b) c) f) g))
+                      x)
+                    (app
+                      (app (app (app (app (app functor-map C) F) b) c) g)
+                      (app (app (app (app (app (app functor-map C) F) a) b) f) x)))))))))))
+  (lam C (lam F (snd (snd (snd (snd F)))))))
+
+(def make-set-functor
+  (Pi C Category
+    (Pi values (Pi a (app cat-objects C) (U 0))
+      (Pi value-sets (Pi a (app cat-objects C) (app isSet (app values a)))
+        (Pi map
+          (Pi a (app cat-objects C)
+            (Pi b (app cat-objects C)
+              (Pi f (app (app (app cat-hom C) a) b) (Pi x (app values a) (app values b)))))
+          (Pi map-id
+            (Pi a (app cat-objects C)
+              (Pi x (app values a)
+                (Path i (app values a) (app (app (app (app map a) a) (app (app cat-id C) a)) x) x)))
+            (Pi map-compose
+              (Pi a (app cat-objects C)
+                (Pi b (app cat-objects C)
+                  (Pi c (app cat-objects C)
+                    (Pi f (app (app (app cat-hom C) a) b)
+                      (Pi g (app (app (app cat-hom C) b) c)
+                        (Pi x (app values a)
+                          (Path
+                            i
+                            (app values c)
+                            (app
+                              (app
+                                (app (app map a) c)
+                                (app (app (app (app (app (app cat-compose C) a) b) c) f) g))
+                              x)
+                            (app (app (app (app map b) c) g) (app (app (app (app map a) b) f) x)))))))))
+              (app SetFunctor C)))))))
+  (lam C
+    (lam values
+      (lam value-sets
+        (lam map
+          (lam map-id
+            (lam map-compose (pair values (pair value-sets (pair map (pair map-id map-compose)))))))))))
+
+; C(r, -): an arrow f acts by postcomposition h |-> f o h.
+(def representable
+  (Pi C Category (Pi r (app cat-objects C) (app SetFunctor C)))
+  (lam C
+    (lam r
+      (app
+        (app
+          (app
+            (app
+              (app (app make-set-functor C) (lam a (app (app (app cat-hom C) r) a)))
+              (lam a (app (app (app cat-hom-set C) r) a)))
+            (lam a
+              (lam b (lam f (lam h (app (app (app (app (app (app cat-compose C) r) a) b) h) f))))))
+          (lam a (lam h (app (app (app (app cat-id-left C) r) a) h))))
+        (lam a
+          (lam b
+            (lam c
+              (lam f
+                (lam g
+                  (lam h
+                    (app
+                      (app
+                        (app
+                          (app sym (app (app (app cat-hom C) r) c))
+                          (app
+                            (app
+                              (app (app (app (app cat-compose C) r) b) c)
+                              (app (app (app (app (app (app cat-compose C) r) a) b) h) f))
+                            g))
+                        (app
+                          (app (app (app (app (app cat-compose C) r) a) c) h)
+                          (app (app (app (app (app (app cat-compose C) a) b) c) f) g)))
+                      (app (app (app (app (app (app (app (app cat-assoc C) r) a) b) c) h) f) g))))))))))))
+
+; Every arrow acts as the identity on A.
+(def constant-set-functor
+  (Pi C Category (Pi A (U 0) (Pi set-A (app isSet A) (app SetFunctor C))))
+  (lam C
+    (lam A
+      (lam set-A
+        (app
+          (app
+            (app
+              (app (app (app make-set-functor C) (lam a A)) (lam a set-A))
+              (lam a (lam b (lam f (lam x x)))))
+            (lam a (lam x (path i x))))
+          (lam a (lam b (lam c (lam f (lam g (lam x (path i x))))))))))))
+
+; The underlying-set functor on an indexed category of functions.
+(def underlying-set-functor
+  (Pi O (U 0)
+    (Pi values (Pi a O (U 0))
+      (Pi sets (Pi a O (app isSet (app values a)))
+        (app SetFunctor (app (app (app function-category O) values) sets)))))
+  (lam O
+    (lam values
+      (lam sets
+        (app
+          (app
+            (app
+              (app
+                (app
+                  (app make-set-functor (app (app (app function-category O) values) sets))
+                  values)
+                sets)
+              (lam a (lam b (lam f (lam x (app f x))))))
+            (lam a (lam x (path i x))))
+          (lam a (lam b (lam c (lam f (lam g (lam x (path i (app g (app f x))))))))))))))
+
+(def representable-example
+  (app SetFunctor two-object-category)
+  (app (app representable two-object-category) true))
+
+(def representable-result
+  Bool
+  (fst
+    (app
+      (app
+        (app (app (app (app functor-map two-object-category) representable-example) true) false)
+        example-arrow)
+      unit)))
+
+(def constant-example
+  (app SetFunctor two-object-category)
+  (app (app (app constant-set-functor two-object-category) Unit) unit-isSet))
+
+(def constant-result
+  Bool
+  (fst
+    (app
+      (app
+        (app (app (app (app functor-map two-object-category) constant-example) true) false)
+        example-arrow)
+      unit)))

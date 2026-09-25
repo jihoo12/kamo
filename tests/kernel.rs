@@ -36,6 +36,63 @@ fn universe_errors() {
     rejects("(def bad (U 1) Bool)", "type mismatch");
     rejects("(def bad (U 4294967295) Bool)", "overflow");
 }
+
+#[test]
+fn yoneda_foundations_and_function_extensionality() {
+    let source = format!(
+        "{}\n{}",
+        include_str!("../examples/foundations.kamo"),
+        r#"
+; These laws quantify over arbitrary dependent families and open paths.
+(def funext-beta
+  (Pi A (U 0) (Pi B (Pi x A (U 0))
+    (Pi f (Pi x A (app B x)) (Pi g (Pi x A (app B x))
+      (Pi h (Pi x A (Path i (app B x) (app f x) (app g x)))
+        (Path j (Pi x A (Path i (app B x) (app f x) (app g x)))
+          (app (app (app (app (app happly A) B) f) g)
+            (app (app (app (app (app funext A) B) f) g) h)) h))))))
+  (lam A (lam B (lam f (lam g (lam h (path j h)))))))
+(def funext-eta
+  (Pi A (U 0) (Pi B (Pi x A (U 0))
+    (Pi f (Pi x A (app B x)) (Pi g (Pi x A (app B x))
+      (Pi p (Path i (Pi x A (app B x)) f g)
+        (Path j (Path i (Pi x A (app B x)) f g)
+          (app (app (app (app (app funext A) B) f) g)
+            (app (app (app (app (app happly A) B) f) g) p)) p))))))
+  (lam A (lam B (lam f (lam g (lam p (path j p)))))))
+(def reversed (Path i Nat zero zero)
+  (app (app (app (app sym Nat) zero) zero) (path i zero)))
+(def joined (Path i Nat zero zero)
+  (app (app (app (app (app (app concat Nat) zero) zero) zero)
+    reversed) (path i zero)))
+(def mapped (Path i Nat (suc zero) (suc zero))
+  (app (app (app (app (app (app cong Nat) Nat) (lam n (suc n)))
+    zero) zero) joined))
+(def mapped-left Nat (at mapped 0))
+(def mapped-right Nat (at mapped 1))
+"#
+    );
+    for optimized in [true, false] {
+        let options = Options {
+            optimized,
+            ..Options::default()
+        };
+        let program = CheckedProgram::check_with(&source, options).unwrap();
+        for name in ["mapped-left", "mapped-right"] {
+            assert_eq!(
+                program.normalize_with(name, options).unwrap().text,
+                "(suc zero)",
+                "{name}, optimized={optimized}"
+            );
+        }
+        let invalid = format!(
+            "{}\n(def bool-is-prop (app isProp Bool) (lam x (lam y (path i x))))",
+            include_str!("../examples/foundations.kamo")
+        );
+        let error = CheckedProgram::check_with(&invalid, options).unwrap_err();
+        assert!(error.message.contains("endpoint"), "{error}");
+    }
+}
 #[test]
 fn rejects_bad_endpoints() {
     rejects(

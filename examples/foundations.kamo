@@ -1,0 +1,143 @@
+; Foundations for the Yoneda library. All carrier types are in U 0.
+; This file is standalone and contains no postulates.
+
+(def refl (Pi A (U 0) (Pi x A (Path i A x x)))
+  (lam A (lam x (path i x))))
+
+; Cartesian intervals have no primitive reversal: use composition.
+(def sym
+  (Pi A (U 0) (Pi x A (Pi y A
+    (Pi p (Path i A x y) (Path i A y x)))))
+  (lam A (lam x (lam y (lam p
+    (path i (com k A 1 0 y (((= i 0) y) ((= i 1) (at p k))))))))))
+
+(def concat
+  (Pi A (U 0) (Pi x A (Pi y A (Pi z A
+    (Pi p (Path i A x y) (Pi q (Path i A y z) (Path i A x z)))))))
+  (lam A (lam x (lam y (lam z (lam p (lam q
+    (path i (com k A 0 1 (at p i)
+      (((= i 0) x) ((= i 1) (at q k))))))))))))
+
+(def cong
+  (Pi A (U 0) (Pi B (U 0) (Pi f (Pi x A B)
+    (Pi x A (Pi y A (Pi p (Path i A x y)
+      (Path i B (app f x) (app f y))))))))
+  (lam A (lam B (lam f (lam x (lam y (lam p
+    (path i (app f (at p i))))))))))
+
+; Dependent congruence has a varying path family B (p i).
+(def cong-dep
+  (Pi A (U 0) (Pi B (Pi x A (U 0)) (Pi f (Pi x A (app B x))
+    (Pi x A (Pi y A (Pi p (Path i A x y)
+      (Path i (app B (at p i)) (app f x) (app f y))))))))
+  (lam A (lam B (lam f (lam x (lam y (lam p
+    (path i (app f (at p i))))))))))
+
+; Pointwise paths give a path between dependent functions.
+(def funext
+  (Pi A (U 0) (Pi B (Pi x A (U 0))
+    (Pi f (Pi x A (app B x)) (Pi g (Pi x A (app B x))
+      (Pi h (Pi x A (Path i (app B x) (app f x) (app g x)))
+        (Path i (Pi x A (app B x)) f g))))))
+  (lam A (lam B (lam f (lam g (lam h
+    (path i (lam x (at (app h x) i)))))))))
+
+(def happly
+  (Pi A (U 0) (Pi B (Pi x A (U 0))
+    (Pi f (Pi x A (app B x)) (Pi g (Pi x A (app B x))
+      (Pi p (Path i (Pi x A (app B x)) f g)
+        (Pi x A (Path i (app B x) (app f x) (app g x))))))))
+  (lam A (lam B (lam f (lam g (lam p (lam x
+    (path i (app (at p i) x)))))))))
+
+; isProp means any two inhabitants are connected by a path.
+; isSet means each path type is a proposition, not that A is finite.
+(def isProp (Pi A (U 0) (U 0))
+  (lam A (Pi x A (Pi y A (Path i A x y)))))
+
+(def isSet (Pi A (U 0) (U 0))
+  (lam A (Pi x A (Pi y A (app isProp (Path i A x y))))))
+
+; A dependent function into propositions is itself a proposition.
+(def isPropPi
+  (Pi A (U 0) (Pi B (Pi x A (U 0))
+    (Pi h (Pi x A (app isProp (app B x)))
+      (app isProp (Pi x A (app B x))))))
+  (lam A (lam B (lam h (lam f (lam g
+    (path i (lam x (at (app (app (app h x) (app f x)) (app g x)) i)))))))))
+
+; Fill a square between arbitrary paths p and q using the proposition witness.
+(def isProp-to-isSet
+  (Pi A (U 0) (Pi h (app isProp A) (app isSet A)))
+  (lam A (lam h (lam x (lam y (lam p (lam q
+    (path i (path j
+      (com k A 0 1 x
+        (((= j 0) (at (app (app h x) x) k))
+         ((= j 1) (at (app (app h x) y) k))
+         ((= i 0) (at (app (app h x) (at p j)) k))
+         ((= i 1) (at (app (app h x) (at q j)) k)))))))))))))
+
+; Pointwise uniqueness of paths gives uniqueness of function paths.
+(def isSetPi
+  (Pi A (U 0) (Pi B (Pi x A (U 0))
+    (Pi h (Pi x A (app isSet (app B x)))
+      (app isSet (Pi x A (app B x))))))
+  (lam A (lam B (lam h (lam f (lam g (lam p (lam q
+    (path i (path j (lam x
+      (at (at
+        (app (app (app (app (app h x) (app f x)) (app g x))
+          (path k (app (at p k) x)))
+          (path k (app (at q k) x))) i) j))))))))))))
+
+; A dependent path between endpoints in a proposition-valued family.
+(def prop-family-path
+  (Pi A (U 0)
+    (Pi B (Pi x A (U 0))
+      (Pi props (Pi x A (app isProp (app B x)))
+        (Pi x A
+          (Pi y A
+            (Pi p (Path i A x y) (Pi u (app B x) (Pi v (app B y) (Path i (app B (at p i)) u v)))))))))
+  (lam A
+    (lam B
+      (lam props
+        (lam x
+          (lam y
+            (lam p
+              (lam u
+                (lam v
+                  (path i
+                    (com
+                      j
+                      (app B (at p i))
+                      0
+                      1
+                      (coe k (app B (at p k)) 0 i u)
+                      (((= i 0) (at (app (app (app props x) u) u) j))
+                        ((= i 1) (at (app (app (app props y) (coe k (app B (at p k)) 0 1 u)) v) j))))))))))))))
+
+; Equality of first components lifts to Sigma when each second-component type is a proposition.
+(def sigma-path-prop
+  (Pi A (U 0)
+    (Pi B (Pi x A (U 0))
+      (Pi props (Pi x A (app isProp (app B x)))
+        (Pi u (Sigma x A (app B x))
+          (Pi v (Sigma x A (app B x))
+            (Pi p (Path i A (fst u) (fst v)) (Path i (Sigma x A (app B x)) u v)))))))
+  (lam A
+    (lam B
+      (lam props
+        (lam u
+          (lam v
+            (lam p
+              (path i
+                (pair
+                  (at p i)
+                  (at
+                    (app
+                      (app
+                        (app
+                          (app (app (app (app (app prop-family-path A) B) props) (fst u)) (fst v))
+                          p)
+                        (snd u))
+                      (snd v))
+                    i))))))))))

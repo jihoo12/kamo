@@ -1,0 +1,31 @@
+; A standalone first proof: addition and its right identity.
+; Addition eliminates its FIRST argument:
+;   add zero n = n
+;   add (suc k) n = suc (add k n)
+(def add (Pi m Nat (Pi n Nat Nat))
+  (lam m (lam n
+    (nat-elim (lam _ Nat) n (lam k (lam acc (suc acc))) m))))
+
+; Left identity follows directly from computation.
+(def add-zero-left (Pi n Nat (Path i Nat (app (app add zero) n) n))
+  (lam n (path i n)))
+
+; Right identity needs induction on n.
+; Motive: add n zero = n.
+; Base: zero = zero, witnessed by a constant path.
+; Step: apply suc at every point of the induction hypothesis ih.
+(def add-zero-right (Pi n Nat (Path i Nat (app (app add n) zero) n))
+  (lam n
+    (nat-elim
+      (lam k (Path i Nat (app (app add k) zero) k))
+      (path i zero)
+      (lam k (lam ih (path i (suc (at ih i)))))
+      n)))
+
+(def two Nat (suc (suc zero)))
+(def four Nat (app (app add two) two))
+(def two-plus-zero Nat (app (app add two) zero))
+(def two-plus-zero-proof (Path i Nat two-plus-zero two)
+  (app add-zero-right two))
+(def proof-left Nat (at two-plus-zero-proof 0))
+(def proof-right Nat (at two-plus-zero-proof 1))

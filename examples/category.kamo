@@ -1,0 +1,261 @@
+; Small categories for Yoneda. Prepend examples/foundations.kamo before checking.
+; Objects and each hom type live in U 0; Category itself lives in U 1.
+; cat-compose C a b c f g means g after f (g o f).
+; Hom types are sets. Object types need not be sets; no category univalence is required.
+
+; Record order: objects, homs, identity, composition, hom-set, left unit, right unit, associativity.
+(def Category
+  (U 1)
+  (Sigma O (U 0)
+    (Sigma H (Pi a O (Pi b O (U 0)))
+      (Sigma identity (Pi a O (app (app H a) a))
+        (Sigma compose
+          (Pi a O
+            (Pi b O (Pi c O (Pi f (app (app H a) b) (Pi g (app (app H b) c) (app (app H a) c))))))
+          (Sigma hom-set (Pi a O (Pi b O (app isSet (app (app H a) b))))
+            (Sigma id-left
+              (Pi a O
+                (Pi b O
+                  (Pi f (app (app H a) b)
+                    (Path
+                      i
+                      (app (app H a) b)
+                      (app (app (app (app (app compose a) b) b) f) (app identity b))
+                      f))))
+              (Sigma id-right
+                (Pi a O
+                  (Pi b O
+                    (Pi f (app (app H a) b)
+                      (Path
+                        i
+                        (app (app H a) b)
+                        (app (app (app (app (app compose a) a) b) (app identity a)) f)
+                        f))))
+                (Pi a O
+                  (Pi b O
+                    (Pi c O
+                      (Pi d O
+                        (Pi f (app (app H a) b)
+                          (Pi g (app (app H b) c)
+                            (Pi h (app (app H c) d)
+                              (Path
+                                i
+                                (app (app H a) d)
+                                (app
+                                  (app
+                                    (app (app (app compose a) c) d)
+                                    (app (app (app (app (app compose a) b) c) f) g))
+                                  h)
+                                (app
+                                  (app (app (app (app compose a) b) d) f)
+                                  (app (app (app (app (app compose b) c) d) g) h))))))))))))))))))
+
+(def cat-objects (Pi C Category (U 0)) (lam C (fst C)))
+
+(def cat-hom
+  (Pi C Category (Pi a (app cat-objects C) (Pi b (app cat-objects C) (U 0))))
+  (lam C (fst (snd C))))
+
+(def cat-id
+  (Pi C Category (Pi a (app cat-objects C) (app (app (app cat-hom C) a) a)))
+  (lam C (fst (snd (snd C)))))
+
+(def cat-compose
+  (Pi C Category
+    (Pi a (app cat-objects C)
+      (Pi b (app cat-objects C)
+        (Pi c (app cat-objects C)
+          (Pi f (app (app (app cat-hom C) a) b)
+            (Pi g (app (app (app cat-hom C) b) c) (app (app (app cat-hom C) a) c)))))))
+  (lam C (fst (snd (snd (snd C))))))
+
+(def cat-hom-set
+  (Pi C Category
+    (Pi a (app cat-objects C)
+      (Pi b (app cat-objects C) (app isSet (app (app (app cat-hom C) a) b)))))
+  (lam C (fst (snd (snd (snd (snd C)))))))
+
+(def cat-id-left
+  (Pi C Category
+    (Pi a (app cat-objects C)
+      (Pi b (app cat-objects C)
+        (Pi f (app (app (app cat-hom C) a) b)
+          (Path
+            i
+            (app (app (app cat-hom C) a) b)
+            (app (app (app (app (app (app cat-compose C) a) b) b) f) (app (app cat-id C) b))
+            f)))))
+  (lam C (fst (snd (snd (snd (snd (snd C))))))))
+
+(def cat-id-right
+  (Pi C Category
+    (Pi a (app cat-objects C)
+      (Pi b (app cat-objects C)
+        (Pi f (app (app (app cat-hom C) a) b)
+          (Path
+            i
+            (app (app (app cat-hom C) a) b)
+            (app (app (app (app (app (app cat-compose C) a) a) b) (app (app cat-id C) a)) f)
+            f)))))
+  (lam C (fst (snd (snd (snd (snd (snd (snd C)))))))))
+
+(def cat-assoc
+  (Pi C Category
+    (Pi a (app cat-objects C)
+      (Pi b (app cat-objects C)
+        (Pi c (app cat-objects C)
+          (Pi d (app cat-objects C)
+            (Pi f (app (app (app cat-hom C) a) b)
+              (Pi g (app (app (app cat-hom C) b) c)
+                (Pi h (app (app (app cat-hom C) c) d)
+                  (Path
+                    i
+                    (app (app (app cat-hom C) a) d)
+                    (app
+                      (app
+                        (app (app (app (app cat-compose C) a) c) d)
+                        (app (app (app (app (app (app cat-compose C) a) b) c) f) g))
+                      h)
+                    (app
+                      (app (app (app (app (app cat-compose C) a) b) d) f)
+                      (app (app (app (app (app (app cat-compose C) b) c) d) g) h)))))))))))
+  (lam C (snd (snd (snd (snd (snd (snd (snd C)))))))))
+
+; Constructor requires all laws as checked arguments.
+(def make-category
+  (Pi O (U 0)
+    (Pi H (Pi a O (Pi b O (U 0)))
+      (Pi identity (Pi a O (app (app H a) a))
+        (Pi compose
+          (Pi a O
+            (Pi b O (Pi c O (Pi f (app (app H a) b) (Pi g (app (app H b) c) (app (app H a) c))))))
+          (Pi hom-set (Pi a O (Pi b O (app isSet (app (app H a) b))))
+            (Pi id-left
+              (Pi a O
+                (Pi b O
+                  (Pi f (app (app H a) b)
+                    (Path
+                      i
+                      (app (app H a) b)
+                      (app (app (app (app (app compose a) b) b) f) (app identity b))
+                      f))))
+              (Pi id-right
+                (Pi a O
+                  (Pi b O
+                    (Pi f (app (app H a) b)
+                      (Path
+                        i
+                        (app (app H a) b)
+                        (app (app (app (app (app compose a) a) b) (app identity a)) f)
+                        f))))
+                (Pi assoc
+                  (Pi a O
+                    (Pi b O
+                      (Pi c O
+                        (Pi d O
+                          (Pi f (app (app H a) b)
+                            (Pi g (app (app H b) c)
+                              (Pi h (app (app H c) d)
+                                (Path
+                                  i
+                                  (app (app H a) d)
+                                  (app
+                                    (app
+                                      (app (app (app compose a) c) d)
+                                      (app (app (app (app (app compose a) b) c) f) g))
+                                    h)
+                                  (app
+                                    (app (app (app (app compose a) b) d) f)
+                                    (app (app (app (app (app compose b) c) d) g) h))))))))))
+                  Category))))))))
+  (lam O
+    (lam H
+      (lam identity
+        (lam compose
+          (lam hom-set
+            (lam id-left
+              (lam id-right
+                (lam assoc
+                  (pair
+                    O
+                    (pair
+                      H
+                      (pair
+                        identity
+                        (pair compose (pair hom-set (pair id-left (pair id-right assoc))))))))))))))))
+
+; A singleton encoded with Sigma and Path; no new primitive Unit type.
+(def Unit (U 0) (Sigma b Bool (Path i Bool b true)))
+
+(def unit Unit (pair true (path i true)))
+
+(def unit-contract
+  (Pi v Unit (Path i Unit unit v))
+  (lam v
+    (path i
+      (pair
+        (com k Bool 1 0 true (((= i 0) true) ((= i 1) (at (snd v) k))))
+        (path j (com k Bool 1 j true (((= i 0) true) ((= i 1) (at (snd v) k)))))))))
+
+(def unit-isProp
+  (app isProp Unit)
+  (lam x
+    (lam y
+      (app
+        (app
+          (app (app (app (app concat Unit) x) unit) y)
+          (app (app (app (app sym Unit) unit) x) (app unit-contract x)))
+        (app unit-contract y)))))
+
+(def unit-isSet (app isSet Unit) (app (app isProp-to-isSet Unit) unit-isProp))
+
+; The indiscrete category on O: a contractible hom type for every pair of objects.
+(def indiscrete-category
+  (Pi O (U 0) Category)
+  (lam O
+    (app
+      (app
+        (app
+          (app
+            (app
+              (app (app (app make-category O) (lam a (lam b Unit))) (lam a unit))
+              (lam a (lam b (lam c (lam f (lam g unit))))))
+            (lam a (lam b unit-isSet)))
+          (lam a (lam b (lam f (app unit-contract f)))))
+        (lam a (lam b (lam f (app unit-contract f)))))
+      (lam a (lam b (lam c (lam d (lam f (lam g (lam h (path i unit)))))))))))
+
+(def two-object-category Category (app indiscrete-category Bool))
+
+(def example-arrow (app (app (app cat-hom two-object-category) true) false) unit)
+
+(def example-composite
+  (app (app (app cat-hom two-object-category) true) true)
+  (app
+    (app (app (app (app (app cat-compose two-object-category) true) false) true) example-arrow)
+    unit))
+
+(def example-result Bool (fst example-composite))
+
+; Functions between an O-indexed family F of sets; identities and laws compute by beta/eta.
+(def function-category
+  (Pi O (U 0) (Pi F (Pi a O (U 0)) (Pi sets (Pi a O (app isSet (app F a))) Category)))
+  (lam O
+    (lam F
+      (lam sets
+        (app
+          (app
+            (app
+              (app
+                (app
+                  (app
+                    (app (app make-category O) (lam a (lam b (Pi x (app F a) (app F b)))))
+                    (lam a (lam x x)))
+                  (lam a (lam b (lam c (lam f (lam g (lam x (app g (app f x)))))))))
+                (lam a
+                  (lam b (app (app (app isSetPi (app F a)) (lam x (app F b))) (lam x (app sets b))))))
+              (lam a (lam b (lam f (path i f)))))
+            (lam a (lam b (lam f (path i f)))))
+          (lam a
+            (lam b
+              (lam c (lam d (lam f (lam g (lam h (path i (lam x (app h (app g (app f x)))))))))))))))))

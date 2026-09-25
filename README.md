@@ -31,6 +31,92 @@ optimized collapsing of substitution suspensions. Both modes use the same
 mathematical reduction rules; this is a differential implementation check, not
 an independent proof of correctness.
 
+## A first proof: natural-number addition
+
+[`examples/nat-add.kamo`](examples/nat-add.kamo) is a standalone introduction to
+dependent elimination and paths. It defines addition using `nat-elim` on the
+first argument, then proves both zero identities. `zero + n = n` follows by
+computation; `n + zero = n` is proved by induction. The successor step maps `suc`
+over the induction hypothesis with `(path i (suc (at ih i)))`.
+
+```sh
+scripts/with-limits.sh target/release/kamo check examples/nat-add.kamo
+scripts/with-limits.sh target/release/kamo normalize examples/nat-add.kamo four
+# (suc (suc (suc (suc zero))))
+scripts/with-limits.sh target/release/kamo normalize examples/nat-add.kamo two-plus-zero-proof
+# (path i0 (suc (suc zero)))
+```
+
+The type of `add-zero-right` states the theorem for every natural number;
+`two-plus-zero-proof` specializes it to two. `proof-left` and `proof-right`
+evaluate its endpoints, both yielding `(suc (suc zero))`.
+
+## Foundations for Yoneda
+
+[`examples/foundations.kamo`](examples/foundations.kamo) supplies checked `U 0`
+definitions of `refl`, `sym`, `concat`, `cong`, dependent congruence, dependent
+function extensionality (`funext`) and its pointwise inverse (`happly`). It also
+defines `isProp` and `isSet`, proves `isProp-to-isSet`, and proves closure of
+propositions and sets under dependent functions (`isPropPi`, `isSetPi`).
+
+```sh
+scripts/with-limits.sh target/release/kamo check examples/foundations.kamo
+```
+
+Here a proposition has a path between any two inhabitants; a set has a
+propositional path type between each pair of inhabitants. No global proof
+irrelevance or sethood of arbitrary types is assumed. These are foundations
+for the planned set-valued Yoneda lemma; the lemma itself is not yet implemented.
+The file is
+standalone; clients can append further declarations to its source before
+checking. Kernel tests check both function-extensionality round trips for
+arbitrary dependent families in both execution modes.
+
+[`examples/category.kamo`](examples/category.kamo) builds on these foundations
+with small categories, a constructor requiring all category laws, and named
+projections. Hom types must be sets; object types need not be sets. Examples
+include an indiscrete category on two objects and a general construction of
+the category of functions between an indexed family of small sets.
+
+```sh
+cat examples/foundations.kamo examples/category.kamo > /tmp/kamo-category.kamo
+scripts/with-limits.sh target/release/kamo check /tmp/kamo-category.kamo
+scripts/with-limits.sh target/release/kamo normalize /tmp/kamo-category.kamo example-result
+# true
+```
+
+The files are concatenated in dependency order; Kamo has no import syntax.
+See [category library notes](docs/categories.md) for composition order, the
+record layout, universe levels, and the next steps toward Yoneda.
+
+[`examples/functor.kamo`](examples/functor.kamo) adds small-set-valued covariant
+functors with explicit set proofs and pointwise identity/composition laws.
+It includes the representable functor `C(r, -)`, constant functors, and the
+underlying-set functor for an indexed category of functions.
+
+```sh
+cat examples/foundations.kamo examples/category.kamo examples/functor.kamo > /tmp/kamo-functor.kamo
+scripts/with-limits.sh target/release/kamo check /tmp/kamo-functor.kamo
+scripts/with-limits.sh target/release/kamo normalize /tmp/kamo-functor.kamo representable-result
+# true
+```
+
+[`examples/natural.kamo`](examples/natural.kamo) defines natural transformations,
+their identity and vertical composition, and `nat-ext`: pointwise equality of
+components gives equality of the entire transformation, including its naturality
+proof. It also proves the unit and associativity laws for vertical composition.
+The foundations file supplies the supporting `prop-family-path` and
+`sigma-path-prop` lemmas.
+
+```sh
+cat examples/foundations.kamo examples/category.kamo examples/functor.kamo examples/natural.kamo > /tmp/kamo-natural.kamo
+scripts/with-limits.sh target/release/kamo check /tmp/kamo-natural.kamo
+scripts/with-limits.sh target/release/kamo normalize /tmp/kamo-natural.kamo natural-result
+# true
+# Reference evaluation needs a larger node budget for this library.
+scripts/with-limits.sh target/release/kamo check /tmp/kamo-natural.kamo --reference --max-nodes 1000000
+```
+
 ## Resource limits
 
 The development runner imposes a **512 MiB virtual-address-space limit** and a

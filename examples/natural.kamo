@@ -1,0 +1,351 @@
+; Natural transformations between small-set-valued covariant functors.
+; Prepend foundations.kamo, category.kamo, and functor.kamo, in that order.
+; Naturality is oriented alpha_b(F(f)(x)) = G(f)(alpha_a(x)).
+
+(def NatComponents
+  (Pi C Category (Pi F (app SetFunctor C) (Pi G (app SetFunctor C) (U 0))))
+  (lam C
+    (lam F
+      (lam G
+        (Pi a (app cat-objects C)
+          (Pi x (app (app (app functor-objects C) F) a) (app (app (app functor-objects C) G) a)))))))
+
+(def Naturality
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C) (Pi alpha (app (app (app NatComponents C) F) G) (U 0)))))
+  (lam C
+    (lam F
+      (lam G
+        (lam alpha
+          (Pi a (app cat-objects C)
+            (Pi b (app cat-objects C)
+              (Pi f (app (app (app cat-hom C) a) b)
+                (Pi x (app (app (app functor-objects C) F) a)
+                  (Path
+                    i
+                    (app (app (app functor-objects C) G) b)
+                    (app (app alpha b) (app (app (app (app (app (app functor-map C) F) a) b) f) x))
+                    (app (app (app (app (app (app functor-map C) G) a) b) f) (app (app alpha a) x))))))))))))
+
+; For fixed components, naturality witnesses are equal because each G(b) is a set.
+(def naturality-isProp
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatComponents C) F) G)
+          (app isProp (app (app (app (app Naturality C) F) G) alpha))))))
+  (lam C
+    (lam F
+      (lam G
+        (lam alpha
+          (lam p
+            (lam q
+              (path i
+                (lam a
+                  (lam b
+                    (lam f
+                      (lam x
+                        (at
+                          (app
+                            (app
+                              (app
+                                (app
+                                  (app (app (app functor-sets C) G) b)
+                                  (app
+                                    (app alpha b)
+                                    (app (app (app (app (app (app functor-map C) F) a) b) f) x)))
+                                (app
+                                  (app (app (app (app (app functor-map C) G) a) b) f)
+                                  (app (app alpha a) x)))
+                              (app (app (app (app p a) b) f) x))
+                            (app (app (app (app q a) b) f) x))
+                          i)))))))))))))
+
+(def NatTrans
+  (Pi C Category (Pi F (app SetFunctor C) (Pi G (app SetFunctor C) (U 0))))
+  (lam C
+    (lam F
+      (lam G
+        (Sigma alpha (app (app (app NatComponents C) F) G)
+          (app (app (app (app Naturality C) F) G) alpha))))))
+
+(def make-nat-trans
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatComponents C) F) G)
+          (Pi natural (app (app (app (app Naturality C) F) G) alpha)
+            (app (app (app NatTrans C) F) G))))))
+  (lam C (lam F (lam G (lam alpha (lam natural (pair alpha natural)))))))
+
+(def nat-component
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatTrans C) F) G) (app (app (app NatComponents C) F) G)))))
+  (lam C (lam F (lam G (lam alpha (fst alpha))))))
+
+(def nat-naturality
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatTrans C) F) G)
+          (app (app (app (app Naturality C) F) G) (app (app (app (app nat-component C) F) G) alpha))))))
+  (lam C (lam F (lam G (lam alpha (snd alpha))))))
+
+; Pointwise component equality gives equality of the entire natural transformation, including its proof.
+(def nat-ext
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatTrans C) F) G)
+          (Pi beta (app (app (app NatTrans C) F) G)
+            (Pi h
+              (Pi a (app cat-objects C)
+                (Pi x (app (app (app functor-objects C) F) a)
+                  (Path
+                    i
+                    (app (app (app functor-objects C) G) a)
+                    (app (app (app (app (app (app nat-component C) F) G) alpha) a) x)
+                    (app (app (app (app (app (app nat-component C) F) G) beta) a) x))))
+              (Path i (app (app (app NatTrans C) F) G) alpha beta)))))))
+  (lam C
+    (lam F
+      (lam G
+        (lam alpha
+          (lam beta
+            (lam h
+              (app
+                (app
+                  (app
+                    (app
+                      (app
+                        (app sigma-path-prop (app (app (app NatComponents C) F) G))
+                        (app (app (app Naturality C) F) G))
+                      (app (app (app naturality-isProp C) F) G))
+                    alpha)
+                  beta)
+                (path i (lam a (lam x (at (app (app h a) x) i))))))))))))
+
+(def nat-id
+  (Pi C Category (Pi F (app SetFunctor C) (app (app (app NatTrans C) F) F)))
+  (lam C
+    (lam F
+      (pair
+        (lam a (lam x x))
+        (lam a
+          (lam b
+            (lam f (lam x (path i (app (app (app (app (app (app functor-map C) F) a) b) f) x))))))))))
+
+; Vertical composition: nat-compose alpha beta means beta after alpha.
+(def nat-compose
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi H (app SetFunctor C)
+          (Pi alpha (app (app (app NatTrans C) F) G)
+            (Pi beta (app (app (app NatTrans C) G) H) (app (app (app NatTrans C) F) H)))))))
+  (lam C
+    (lam F
+      (lam G
+        (lam H
+          (lam alpha
+            (lam beta
+              (pair
+                (lam a
+                  (lam x
+                    (app
+                      (app (app (app (app (app nat-component C) G) H) beta) a)
+                      (app (app (app (app (app (app nat-component C) F) G) alpha) a) x))))
+                (lam a
+                  (lam b
+                    (lam f
+                      (lam x
+                        (app
+                          (app
+                            (app
+                              (app
+                                (app
+                                  (app concat (app (app (app functor-objects C) H) b))
+                                  (app
+                                    (app (app (app (app (app nat-component C) G) H) beta) b)
+                                    (app
+                                      (app (app (app (app (app nat-component C) F) G) alpha) b)
+                                      (app (app (app (app (app (app functor-map C) F) a) b) f) x))))
+                                (app
+                                  (app (app (app (app (app nat-component C) G) H) beta) b)
+                                  (app
+                                    (app (app (app (app (app functor-map C) G) a) b) f)
+                                    (app
+                                      (app (app (app (app (app nat-component C) F) G) alpha) a)
+                                      x))))
+                              (app
+                                (app (app (app (app (app functor-map C) H) a) b) f)
+                                (app
+                                  (app (app (app (app (app nat-component C) G) H) beta) a)
+                                  (app (app (app (app (app (app nat-component C) F) G) alpha) a) x))))
+                            (app
+                              (app
+                                (app
+                                  (app
+                                    (app
+                                      (app cong (app (app (app functor-objects C) G) b))
+                                      (app (app (app functor-objects C) H) b))
+                                    (app (app (app (app (app nat-component C) G) H) beta) b))
+                                  (app
+                                    (app (app (app (app (app nat-component C) F) G) alpha) b)
+                                    (app (app (app (app (app (app functor-map C) F) a) b) f) x)))
+                                (app
+                                  (app (app (app (app (app functor-map C) G) a) b) f)
+                                  (app (app (app (app (app (app nat-component C) F) G) alpha) a) x)))
+                              (app
+                                (app
+                                  (app (app (app (app (app (app nat-naturality C) F) G) alpha) a) b)
+                                  f)
+                                x)))
+                          (app
+                            (app
+                              (app (app (app (app (app (app nat-naturality C) G) H) beta) a) b)
+                              f)
+                            (app (app (app (app (app (app nat-component C) F) G) alpha) a) x)))))))))))))))
+
+(def nat-id-left
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatTrans C) F) G)
+          (Path
+            i
+            (app (app (app NatTrans C) F) G)
+            (app (app (app (app (app (app nat-compose C) F) G) G) alpha) (app (app nat-id C) G))
+            alpha)))))
+  (lam C
+    (lam F
+      (lam G
+        (lam alpha
+          (app
+            (app
+              (app
+                (app (app (app nat-ext C) F) G)
+                (app (app (app (app (app (app nat-compose C) F) G) G) alpha) (app (app nat-id C) G)))
+              alpha)
+            (lam a
+              (lam x (path i (app (app (app (app (app (app nat-component C) F) G) alpha) a) x))))))))))
+
+(def nat-id-right
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi alpha (app (app (app NatTrans C) F) G)
+          (Path
+            i
+            (app (app (app NatTrans C) F) G)
+            (app (app (app (app (app (app nat-compose C) F) F) G) (app (app nat-id C) F)) alpha)
+            alpha)))))
+  (lam C
+    (lam F
+      (lam G
+        (lam alpha
+          (app
+            (app
+              (app
+                (app (app (app nat-ext C) F) G)
+                (app (app (app (app (app (app nat-compose C) F) F) G) (app (app nat-id C) F)) alpha))
+              alpha)
+            (lam a
+              (lam x (path i (app (app (app (app (app (app nat-component C) F) G) alpha) a) x))))))))))
+
+(def nat-assoc
+  (Pi C Category
+    (Pi F (app SetFunctor C)
+      (Pi G (app SetFunctor C)
+        (Pi H (app SetFunctor C)
+          (Pi K (app SetFunctor C)
+            (Pi alpha (app (app (app NatTrans C) F) G)
+              (Pi beta (app (app (app NatTrans C) G) H)
+                (Pi gamma (app (app (app NatTrans C) H) K)
+                  (Path
+                    i
+                    (app (app (app NatTrans C) F) K)
+                    (app
+                      (app
+                        (app (app (app (app nat-compose C) F) H) K)
+                        (app (app (app (app (app (app nat-compose C) F) G) H) alpha) beta))
+                      gamma)
+                    (app
+                      (app (app (app (app (app nat-compose C) F) G) K) alpha)
+                      (app (app (app (app (app (app nat-compose C) G) H) K) beta) gamma)))))))))))
+  (lam C
+    (lam F
+      (lam G
+        (lam H
+          (lam K
+            (lam alpha
+              (lam beta
+                (lam gamma
+                  (app
+                    (app
+                      (app
+                        (app (app (app nat-ext C) F) K)
+                        (app
+                          (app
+                            (app (app (app (app nat-compose C) F) H) K)
+                            (app (app (app (app (app (app nat-compose C) F) G) H) alpha) beta))
+                          gamma))
+                      (app
+                        (app (app (app (app (app nat-compose C) F) G) K) alpha)
+                        (app (app (app (app (app (app nat-compose C) G) H) K) beta) gamma)))
+                    (lam a
+                      (lam x
+                        (path i
+                          (app
+                            (app (app (app (app (app nat-component C) H) K) gamma) a)
+                            (app
+                              (app (app (app (app (app nat-component C) G) H) beta) a)
+                              (app (app (app (app (app (app nat-component C) F) G) alpha) a) x))))))))))))))))
+
+(def constant-nat
+  (Pi C Category
+    (Pi A (U 0)
+      (Pi B (U 0)
+        (Pi set-A (app isSet A)
+          (Pi set-B (app isSet B)
+            (Pi f (Pi x A B)
+              (app
+                (app (app NatTrans C) (app (app (app constant-set-functor C) A) set-A))
+                (app (app (app constant-set-functor C) B) set-B))))))))
+  (lam C
+    (lam A
+      (lam B
+        (lam set-A
+          (lam set-B
+            (lam f
+              (pair (lam a (lam x (app f x))) (lam a (lam b (lam g (lam x (path i (app f x))))))))))))))
+
+(def natural-example
+  (app (app (app NatTrans two-object-category) constant-example) constant-example)
+  (app
+    (app (app (app (app (app constant-nat two-object-category) Unit) Unit) unit-isSet) unit-isSet)
+    (lam x unit)))
+
+(def natural-composite
+  (app (app (app NatTrans two-object-category) constant-example) constant-example)
+  (app
+    (app
+      (app
+        (app (app (app nat-compose two-object-category) constant-example) constant-example)
+        constant-example)
+      natural-example)
+    (app (app nat-id two-object-category) constant-example)))
+
+(def natural-result
+  Bool
+  (fst
+    (app
+      (app
+        (app
+          (app (app (app nat-component two-object-category) constant-example) constant-example)
+          natural-composite)
+        false)
+      unit)))
